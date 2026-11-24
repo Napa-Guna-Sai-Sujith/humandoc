@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { one } from "@/lib/db";
+import { one, pool } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -12,10 +12,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ detail: "Missing key parameter" }, { status: 400 });
   }
 
-  // 1. Direct query from Neon PostgreSQL stored_files table
+  // 1. Direct query from Neon PostgreSQL stored_files table (only within 24-hour lifetime)
   try {
+    // Opportunistically prune files older than 24 hours
+    pool.query("DELETE FROM stored_files WHERE created_at < NOW() - INTERVAL '24 hours'").catch(() => {});
+
     const row = await one<{ content: Buffer; content_type: string; size: number }>(
-      "SELECT content, content_type, size FROM stored_files WHERE key = $1",
+      "SELECT content, content_type, size FROM stored_files WHERE key = $1 AND created_at > NOW() - INTERVAL '24 hours'",
       [key]
     );
 

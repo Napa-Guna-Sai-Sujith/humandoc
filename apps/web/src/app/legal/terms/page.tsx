@@ -31,7 +31,7 @@ const sections = [
   },
   {
     title: "7. Data and retention",
-    body: "Your use of the service is governed by our Privacy Policy. Files auto-delete after the retention window; you may delete them sooner.",
+    body: "Your use of the service is governed by our Privacy Policy. All uploaded documents and worked/rewritten files are deleted automatically after a couple of hours for your privacy and security. You may also delete them immediately at any time from your account history.",
   },
   {
     title: "8. Liability",

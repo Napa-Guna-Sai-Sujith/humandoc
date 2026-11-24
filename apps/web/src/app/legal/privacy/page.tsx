@@ -19,7 +19,7 @@ const sections = [
   },
   {
     title: "Retention and deletion",
-    body: "Uploads and outputs are deleted automatically 7 days after processing by default. You can delete any job immediately from History, and you can delete your account and all associated data from Settings. Deletion of stored objects is final.",
+    body: "Uploads and outputs are deleted automatically after a couple of hours following processing by default. You can delete any job immediately from History, and you can delete your account and all associated data from Settings. Deletion of stored objects is final.",
   },
   {
     title: "Training",

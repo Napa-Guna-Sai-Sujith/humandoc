@@ -23,7 +23,7 @@ from sqlalchemy import func, select, text
 from app.core.config import settings
 from app.core.db import worker_session_scope
 from app.core.storage import apply_retention_tag, delete, download_to, put_bytes
-from app.models import Job, JobPage
+from app.models import Job, JobPage, Upload
 from app.services import analyze as analyze_service
 from app.services import (
     extract_pdf,
@@ -176,7 +176,7 @@ async def _start_job(job_id: str) -> None:
         )
         numbers = list(pages)
         job.started_at = _now()
-        job.expires_at = _now() + dt.timedelta(days=settings.retention_days)
+        job.expires_at = _now() + dt.timedelta(hours=settings.retention_hours)
         await db.commit()
         await _set_status(db, job_id, "rewriting", started_at=job.started_at, expires_at=job.expires_at)
 
@@ -447,7 +447,7 @@ async def _finalize_job(job_id: str) -> None:
         job.output_key = output_key
         job.qa_key = qa_key
         job.finished_at = _now()
-        job.expires_at = _now() + dt.timedelta(days=settings.retention_days)
+        job.expires_at = _now() + dt.timedelta(hours=settings.retention_hours)
         job.processed_pages = total_pages
         job.status = "done"
         job.rewritten_blocks = int(
@@ -528,5 +528,20 @@ async def _purge() -> int:
                     removed += 1
             job.output_key = None
             job.qa_key = None
+
+        # Purge expired uploads (older than 24 hours)
+        uploads = await db.scalars(select(Upload).where(Upload.expires_at < cutoff))
+        for up in uploads:
+            if up.key:
+                delete(up.key)
+                removed += 1
+            await db.delete(up)
+
+        # Purge stored_files in database older than 24 hours
+        try:
+            await db.execute(text("DELETE FROM stored_files WHERE created_at < NOW() - INTERVAL '24 hours'"))
+        except Exception:
+            pass
+
         await db.commit()
     return removed

@@ -48,7 +48,8 @@ class Settings(BaseSettings):
     s3_bucket: str = "humandoc"
     s3_presign_expires: int = 900
     s3_force_path_style: bool = True
-    retention_days: int = 7
+    retention_days: int = 1
+    retention_hours: int = 24
 
     session_secret: str = "dev-secret"
     session_ttl_hours: int = 720

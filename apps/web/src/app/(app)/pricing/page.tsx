@@ -41,7 +41,7 @@ const TIERS: Tier[] = [
       "PDF, DOCX, PPTX, Markdown",
       "HD Plagiarism similarity & AI preview",
       "Block locking & QA report",
-      "7-day auto-delete",
+      "Auto-delete after processing",
     ],
   },
   {

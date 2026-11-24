@@ -89,7 +89,7 @@ async def create_job(payload: JobCreateRequest, user: CurrentUser, db: DbSession
         source_mime=upload.mime,
         file_kind=(upload.filename.rsplit(".", 1)[-1].lower() if "." in upload.filename else "txt"),
         options=options,
-        expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(days=settings.retention_days),
+        expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(hours=settings.retention_hours),
     )
     db.add(job)
     db.add(AuditLog(user_id=user.id, action="job.created", meta=audit_meta(filename=upload.filename, size=upload.size)))
