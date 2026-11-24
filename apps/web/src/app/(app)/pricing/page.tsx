@@ -3,12 +3,17 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { Suspense } from "react";
-import { Check, Loader2 } from "lucide-react";
+import { Check, CheckCircle2, Loader2, Phone, Send } from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -64,27 +69,84 @@ function PricingContent() {
   const params = useSearchParams();
   const { toast } = useToast();
   const [usage, setUsage] = React.useState<Usage | null>(null);
-  const [loading, setLoading] = React.useState<string | null>(null);
+  const [profile, setProfile] = React.useState<{ name: string; email: string }>({ name: "", email: "" });
   const [portalLoading, setPortalLoading] = React.useState(false);
+
+  // Modal State for Plan Request
+  const [selectedTier, setSelectedTier] = React.useState<Tier | null>(null);
+  const [isModalOpen, setIsModalOpen] = React.useState(false);
+  const [phone, setPhone] = React.useState("");
+  const [fullName, setFullName] = React.useState("");
+  const [notes, setNotes] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+  const [submittedMessage, setSubmittedMessage] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     api.get<Usage>("/api/billing/usage").then(setUsage).catch(() => setUsage(null));
+    api
+      .get<{ user: { name: string; email: string } }>("/api/auth/me")
+      .then((res) => {
+        setProfile({ name: res.user.name || "", email: res.user.email });
+        setFullName(res.user.name || "");
+      })
+      .catch(() => undefined);
+
     if (params.get("upgraded")) toast({ title: "Welcome aboard", description: "Your plan is now active.", variant: "success" });
     if (params.get("canceled")) toast({ title: "Checkout canceled", description: "No changes were made." });
   }, [params, toast]);
 
-  const checkout = async (tier: Tier) => {
-    setLoading(tier.id);
-    try {
-      const result = await api.post<{ url: string }>("/api/billing/checkout", { tier: tier.id });
-      window.location.href = result.url;
-    } catch (err) {
+  const handleOpenPlanModal = (tier: Tier) => {
+    setSelectedTier(tier);
+    setIsModalOpen(true);
+  };
+
+  const handleClosePlanModal = () => {
+    setIsModalOpen(false);
+    setSelectedTier(null);
+  };
+
+  const handleSubmitPlanRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTier) return;
+
+    const trimmedPhone = phone.trim();
+    const digitsOnly = trimmedPhone.replace(/\D/g, "");
+    if (!trimmedPhone || digitsOnly.length < 7) {
       toast({
-        title: "Checkout failed",
-        description: err instanceof ApiError ? err.message : "Stripe is not configured.",
+        title: "Mobile Number Required",
+        description: "Please enter a valid mobile number (with country code if outside US/India) so our team can reach you.",
         variant: "error",
       });
-      setLoading(null);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await api.post<{ ok: boolean; message: string }>("/api/billing/request-plan", {
+        tier: selectedTier.id,
+        phone: trimmedPhone,
+        name: fullName || profile.name,
+        notes,
+      });
+
+      toast({
+        title: "Plan Request Submitted",
+        description: res.message || "We will contact you shortly to activate your plan.",
+        variant: "success",
+      });
+
+      setSubmittedMessage(`Thank you! Your request for the ${selectedTier.name} plan has been received. Our team will contact ${trimmedPhone} shortly to activate your account.`);
+      setIsModalOpen(false);
+      setPhone("");
+      setNotes("");
+    } catch (err) {
+      toast({
+        title: "Request Failed",
+        description: err instanceof ApiError ? err.message : "Unable to submit your request. Please try again.",
+        variant: "error",
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -121,6 +183,14 @@ function PricingContent() {
           Simple plans by page count. No per-token surprises — every job shows its cost before you start.
         </p>
       </div>
+
+      {submittedMessage ? (
+        <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900">
+          <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+          <AlertTitle className="text-base font-semibold">Request Received!</AlertTitle>
+          <AlertDescription className="text-sm mt-1">{submittedMessage}</AlertDescription>
+        </Alert>
+      ) : null}
 
       {usage ? (
         <Card>
@@ -196,10 +266,9 @@ function PricingContent() {
                   <Button
                     className="w-full"
                     variant={current ? "secondary" : "default"}
-                    onClick={() => checkout(tier)}
-                    disabled={loading === tier.id || current}
+                    onClick={() => handleOpenPlanModal(tier)}
+                    disabled={current}
                   >
-                    {loading === tier.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     {current ? "Current plan" : "Choose plan"}
                   </Button>
                 )}
@@ -210,9 +279,108 @@ function PricingContent() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Payments are processed by Stripe. Prices exclude tax. You can cancel any time; access continues until the end of
-        the paid period.
+        Choose a plan to submit an upgrade request. Our team will contact your mobile number directly to activate your account.
       </p>
+
+      {/* Plan Request Pop-up Modal */}
+      <Dialog
+        open={isModalOpen}
+        onClose={handleClosePlanModal}
+        title={selectedTier ? `Request ${selectedTier.name} Plan` : "Request Plan"}
+        description={
+          selectedTier
+            ? `$${selectedTier.price}/month · ${selectedTier.pages.toLocaleString()} pages per month`
+            : undefined
+        }
+      >
+        {selectedTier ? (
+          <form onSubmit={handleSubmitPlanRequest} className="space-y-4">
+            <div className="rounded-lg bg-muted/60 p-3.5 text-xs text-muted-foreground border">
+              <p className="font-semibold text-foreground">
+                Upgrading to {selectedTier.name} Plan
+              </p>
+              <p className="mt-1">
+                Enter your contact details below. An email notification will be sent immediately to the HumanDoc team and we will reach out directly to your mobile number to activate your plan.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="req-name">Your Name</Label>
+              <Input
+                id="req-name"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="e.g. John Doe"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="req-email">Account Email</Label>
+              <Input
+                id="req-email"
+                type="email"
+                value={profile.email}
+                disabled
+                className="bg-muted text-muted-foreground cursor-not-allowed"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="req-phone" className="flex items-center gap-1 font-semibold text-foreground">
+                  <Phone className="h-3.5 w-3.5 text-primary" />
+                  Mobile Number <span className="text-red-500">*</span>
+                </Label>
+                <span className="text-[11px] text-red-500 font-medium">Mandatory</span>
+              </div>
+              <Input
+                id="req-phone"
+                type="tel"
+                required
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="e.g. +91 9876543210 or +1 (555) 000-0000"
+                className="font-medium"
+                autoFocus
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Include country code (e.g. +91, +1). We will call or WhatsApp you on this number.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="req-notes">Notes or Special Requirements (Optional)</Label>
+              <Textarea
+                id="req-notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Any special requests, team size, or preferred contact time..."
+                rows={2}
+                className="min-h-[70px]"
+              />
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2 pt-2 border-t">
+              <Button type="button" variant="outline" onClick={handleClosePlanModal} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={submitting} className="gap-1.5">
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Sending Request...
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4" />
+                    Submit Plan Request
+                  </>
+                )}
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </Dialog>
     </div>
   );
 }

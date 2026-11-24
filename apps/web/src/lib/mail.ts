@@ -151,3 +151,114 @@ export async function sendDeletionEmail(to: string): Promise<void> {
     ),
   });
 }
+
+export async function sendPlanRequestAdminEmail({
+  adminEmail = "napagunasaisujith@gmail.com",
+  userName,
+  userEmail,
+  phone,
+  tier,
+  tierName,
+  tierPrice,
+  pages,
+  notes,
+}: {
+  adminEmail?: string;
+  userName: string;
+  userEmail: string;
+  phone: string;
+  tier: string;
+  tierName: string;
+  tierPrice: number;
+  pages: number;
+  notes?: string;
+}): Promise<void> {
+  const cleanPhone = phone.replace(/[^0-9+]/g, "");
+  const waUrl = `https://wa.me/${cleanPhone.replace(/^\+/, "")}`;
+  const telUrl = `tel:${cleanPhone}`;
+
+  await sendEmail({
+    to: adminEmail,
+    subject: `🔔 New Plan Request: ${tierName} Plan (${userEmail})`,
+    html: layout(
+      `New Plan Upgrade Request: ${escapeHtml(tierName)} Plan`,
+      `
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px;margin-bottom:20px">
+        <p style="margin:0;font-size:16px;font-weight:600;color:#166534">Plan Requested: ${escapeHtml(tierName)} ($${tierPrice}/month - ${pages.toLocaleString()} pages)</p>
+      </div>
+
+      <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:14px">
+        <tr style="border-bottom:1px solid #e5e7eb">
+          <td style="padding:10px 0;font-weight:600;color:#4b5563;width:140px">User Name:</td>
+          <td style="padding:10px 0;color:#111827;font-weight:500">${escapeHtml(userName || "Not specified")}</td>
+        </tr>
+        <tr style="border-bottom:1px solid #e5e7eb">
+          <td style="padding:10px 0;font-weight:600;color:#4b5563">User Email:</td>
+          <td style="padding:10px 0;color:#111827"><a href="mailto:${escapeHtml(userEmail)}" style="color:#2563eb;text-decoration:none">${escapeHtml(userEmail)}</a></td>
+        </tr>
+        <tr style="border-bottom:1px solid #e5e7eb;background:#fefce8">
+          <td style="padding:10px 8px;font-weight:700;color:#854d0e">📱 Mobile Number:</td>
+          <td style="padding:10px 8px;font-weight:700;font-size:16px;color:#1e3a8a">
+            <a href="${escapeHtml(telUrl)}" style="color:#1d4ed8;text-decoration:none">${escapeHtml(phone)}</a>
+            &nbsp;•&nbsp;
+            <a href="${escapeHtml(waUrl)}" target="_blank" style="color:#16a34a;text-decoration:none">Chat on WhatsApp ↗</a>
+          </td>
+        </tr>
+        ${
+          notes
+            ? `<tr style="border-bottom:1px solid #e5e7eb">
+          <td style="padding:10px 0;font-weight:600;color:#4b5563;vertical-align:top">Notes / Message:</td>
+          <td style="padding:10px 0;color:#374151">${escapeHtml(notes)}</td>
+        </tr>`
+            : ""
+        }
+        <tr>
+          <td style="padding:10px 0;font-weight:600;color:#4b5563">Requested At:</td>
+          <td style="padding:10px 0;color:#6b7280">${new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" })} IST</td>
+        </tr>
+      </table>
+
+      <p style="margin:24px 0 8px;font-size:14px;color:#374151">
+        To activate or adjust this user's subscription in HumanDoc, log in to the admin dashboard:
+      </p>
+      ${button("https://humandoc.vercel.app/admin", "Open HumanDoc Admin Dashboard")}
+      `,
+    ),
+    text: `New Plan Request: ${tierName} Plan ($${tierPrice}/mo)\nUser: ${userName} (${userEmail})\nMobile Number: ${phone}\nNotes: ${notes || "None"}\nManage in Admin: https://humandoc.vercel.app/admin`,
+  });
+}
+
+export async function sendPlanRequestUserConfirmationEmail({
+  to,
+  userName,
+  tierName,
+  tierPrice,
+  pages,
+}: {
+  to: string;
+  userName: string;
+  tierName: string;
+  tierPrice: number;
+  pages: number;
+}): Promise<void> {
+  await sendEmail({
+    to,
+    subject: `We received your request for the ${tierName} Plan - HumanDoc`,
+    html: layout(
+      `Plan Request Received: ${escapeHtml(tierName)} Plan`,
+      `
+      <p>Hi ${escapeHtml(userName || "there")},</p>
+      <p>Thank you for choosing HumanDoc! We have received your request for the <strong>${escapeHtml(tierName)} Plan</strong> ($${tierPrice}/month for ${pages.toLocaleString()} pages).</p>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin:16px 0">
+        <p style="margin:0;font-size:14px;color:#334155">
+          Our team is reviewing your request and will contact you directly on your provided mobile number to assist with payment and activate your plan.
+        </p>
+      </div>
+      <p style="font-size:14px;color:#4b5563">
+        In the meantime, you can continue using your current HumanDoc account. If you have any urgent questions, feel free to reply directly to this email.
+      </p>
+      `,
+    ),
+    text: `Hi ${userName || "there"},\n\nWe received your request for the ${tierName} Plan ($${tierPrice}/mo).\nOur team will reach out to your mobile number shortly to activate your plan.\n\nThank you,\nHumanDoc Team`,
+  });
+}
