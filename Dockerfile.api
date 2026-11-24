@@ -7,4 +7,4 @@ COPY apps/api ./
 RUN pip install --upgrade pip && pip install -e .
 RUN mkdir -p /tmp/humandoc
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "celery -A app.workers.celery_app worker -l info -Q humandoc,celery -P solo & uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
