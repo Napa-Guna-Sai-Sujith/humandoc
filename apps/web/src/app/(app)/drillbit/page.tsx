@@ -90,10 +90,15 @@ export default function DrillbitPlagiarismPage() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        setPageError(data.detail || "Could not process document.");
+        const msg =
+          data.detail ||
+          (res.status === 413
+            ? "File size exceeds upload limit (maximum 25MB)."
+            : "Could not process document. Please check the file or paste the text directly.");
+        setPageError(msg);
         toast({
-          title: "Upload Blocked",
-          description: data.detail || "File exceeds limit or is unreadable.",
+          title: "Upload Failed",
+          description: msg,
           variant: "error",
         });
         return;
@@ -376,11 +381,15 @@ export default function DrillbitPlagiarismPage() {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {/* 100-Page Limit Alert if exceeded */}
+          {/* Error Alert */}
           {pageError ? (
             <Alert variant="destructive">
               <ShieldAlert className="h-4 w-4" />
-              <AlertTitle>100-Page Limit Exceeded</AlertTitle>
+              <AlertTitle>
+                {pageError.toLowerCase().includes("100-page") || pageError.toLowerCase().includes("limit")
+                  ? "100-Page Limit Exceeded"
+                  : "Upload Error"}
+              </AlertTitle>
               <AlertDescription className="text-xs">{pageError}</AlertDescription>
             </Alert>
           ) : null}

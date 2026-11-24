@@ -45,7 +45,42 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // For PDF, DOCX, DOC: forward to FastAPI backend with PyMuPDF / python-docx engine
+    // Direct high-performance in-process extraction for PDF files (zero cold-start delay)
+    if (ext === "pdf") {
+      try {
+        const { PDFParse } = await import("pdf-parse");
+        const arrayBuffer = await file.arrayBuffer();
+        const parser = new PDFParse(new Uint8Array(arrayBuffer));
+        const res = await parser.getText();
+        const text = (res.text || "").trim();
+        const pages = res.total || Math.max(1, Math.ceil((text ? text.split(/\s+/).length : 0) / 350));
+
+        if (pages > 100) {
+          return NextResponse.json(
+            {
+              detail: `Document exceeds the 100-page limit for HD Plagiarism (${pages} pages found). Maximum allowed is 100 pages.`,
+            },
+            { status: 400 },
+          );
+        }
+
+        const words = text ? text.split(/\s+/).length : 0;
+        if (words > 0) {
+          return NextResponse.json({
+            ok: true,
+            filename,
+            pages,
+            wordCount: words,
+            characterCount: text.length,
+            text,
+          });
+        }
+      } catch (pdfErr) {
+        console.warn("[drillbit/extract] Direct PDF parse failed, trying backend fallback:", pdfErr);
+      }
+    }
+
+    // For DOCX or fallback: forward to FastAPI backend with PyMuPDF / python-docx engine
     const backendBase =
       process.env.API_INTERNAL_URL ||
       (process.env.NODE_ENV === "production" ? "https://humandoc.onrender.com" : "http://localhost:8000");
