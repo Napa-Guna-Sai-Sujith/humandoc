@@ -14,7 +14,6 @@ from urllib.parse import quote
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
 
 from app.core.config import settings
 

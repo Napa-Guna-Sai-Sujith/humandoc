@@ -117,6 +117,7 @@ async def put_upload_part(
 @part_router.get("/download")
 async def download_file(key: str, download_name: str | None = None) -> Response:
     from fastapi.responses import FileResponse
+
     from app.core.storage import _local_path, get_bytes
     p = _local_path(key)
     if p.exists():
@@ -131,7 +132,7 @@ async def download_file(key: str, download_name: str | None = None) -> Response:
             headers["Content-Disposition"] = f'attachment; filename="{download_name}"'
         return Response(content=content, media_type="application/octet-stream", headers=headers)
     except Exception:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found") from None
 
 
 @router.post("/{upload_id}/complete")

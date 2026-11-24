@@ -13,10 +13,10 @@ import logging
 import os
 import re
 import threading
-import time
 from dataclasses import dataclass, field
 
 import httpx
+
 try:
     import anthropic
 except ImportError:

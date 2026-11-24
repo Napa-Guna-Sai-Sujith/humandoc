@@ -80,7 +80,7 @@ class Settings(BaseSettings):
     celery_result_backend: str = "redis://redis:6379/2"
 
     @model_validator(mode="after")
-    def _sync_celery_urls(self) -> "Settings":
+    def _sync_celery_urls(self) -> Settings:
         if self.redis_url and "localhost" not in self.redis_url:
             if "localhost" in self.celery_broker_url:
                 self.celery_broker_url = self.redis_url
