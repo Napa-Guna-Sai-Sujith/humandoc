@@ -4,7 +4,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -78,6 +78,15 @@ class Settings(BaseSettings):
     upload_part_mb: int = 20
     celery_broker_url: str = "redis://localhost:6379/1"
     celery_result_backend: str = "redis://redis:6379/2"
+
+    @model_validator(mode="after")
+    def _sync_celery_urls(self) -> "Settings":
+        if self.redis_url and "localhost" not in self.redis_url:
+            if "localhost" in self.celery_broker_url:
+                self.celery_broker_url = self.redis_url
+            if "localhost" in self.celery_result_backend or "redis:6379" in self.celery_result_backend:
+                self.celery_result_backend = self.redis_url
+        return self
 
     field_encryption_key: str = ""
     virus_scan_enabled: bool = False
