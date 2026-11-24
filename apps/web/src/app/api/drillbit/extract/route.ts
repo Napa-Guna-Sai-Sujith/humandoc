@@ -26,10 +26,10 @@ export async function POST(req: NextRequest) {
       const words = text ? text.split(/\s+/).length : 0;
       const pages = Math.max(1, Math.ceil(words / 350));
 
-      if (pages > 30) {
+      if (pages > 100) {
         return NextResponse.json(
           {
-            detail: `Document exceeds the 30-page limit for HD Plagiarism. This document contains ~${pages} pages (maximum allowed is 30 pages).`,
+            detail: `Document exceeds the 100-page limit for HD Plagiarism. This document contains ~${pages} pages (maximum allowed is 100 pages).`,
           },
           { status: 400 },
         );

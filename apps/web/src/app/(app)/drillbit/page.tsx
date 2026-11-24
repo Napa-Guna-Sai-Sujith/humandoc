@@ -69,7 +69,7 @@ export default function DrillbitPlagiarismPage() {
   const [activeTab, setActiveTab] = useState<"report" | "sources" | "text">("report");
   const [copied, setCopied] = useState(false);
 
-  // Handle File Upload with 30-Page Limit Validation
+  // Handle File Upload with 100-Page Limit Validation
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -99,11 +99,11 @@ export default function DrillbitPlagiarismPage() {
         return;
       }
 
-      if (data.pages > 30) {
-        setPageError(`Document exceeds 30-page limit (${data.pages} pages found). Maximum allowed is 30 pages.`);
+      if (data.pages > 100) {
+        setPageError(`Document exceeds 100-page limit (${data.pages} pages found). Maximum allowed is 100 pages.`);
         toast({
-          title: "Exceeds 30-Page Limit",
-          description: `This document contains ${data.pages} pages. Maximum allowed is 30 pages.`,
+          title: "Exceeds 100-Page Limit",
+          description: `This document contains ${data.pages} pages. Maximum allowed is 100 pages.`,
           variant: "error",
         });
         return;
@@ -117,7 +117,7 @@ export default function DrillbitPlagiarismPage() {
 
       toast({
         title: "Document Loaded Successfully",
-        description: `${file.name} · ${data.pages} page(s) (within 30-page limit) · ${data.wordCount.toLocaleString()} words`,
+        description: `${file.name} · ${data.pages} page(s) (within 100-page limit) · ${data.wordCount.toLocaleString()} words`,
         variant: "success",
       });
     } catch {
@@ -244,7 +244,7 @@ export default function DrillbitPlagiarismPage() {
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight">HD Plagiarism &amp; AI Analysis</h1>
             <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
-              HD Plagiarism Engine · Max 30 Pages
+              HD Plagiarism Engine · Max 100 Pages
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -316,19 +316,19 @@ export default function DrillbitPlagiarismPage() {
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="font-medium text-foreground">{wordCount.toLocaleString()} words</span>
               <span>·</span>
-              <span className={cn("font-medium", computedPages > 30 ? "text-destructive font-bold" : "text-foreground")}>
-                {computedPages} / 30 page(s)
+              <span className={cn("font-medium", computedPages > 100 ? "text-destructive font-bold" : "text-foreground")}>
+                {computedPages} / 100 page(s)
               </span>
             </div>
           </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {/* 30-Page Limit Alert if exceeded */}
+          {/* 100-Page Limit Alert if exceeded */}
           {pageError ? (
             <Alert variant="destructive">
               <ShieldAlert className="h-4 w-4" />
-              <AlertTitle>30-Page Limit Exceeded</AlertTitle>
+              <AlertTitle>100-Page Limit Exceeded</AlertTitle>
               <AlertDescription className="text-xs">{pageError}</AlertDescription>
             </Alert>
           ) : null}
@@ -345,7 +345,7 @@ export default function DrillbitPlagiarismPage() {
                     <div>
                       <p className="font-semibold text-foreground text-sm">{uploadedFileName}</p>
                       <p className="text-muted-foreground">
-                        {uploadedPages} page(s) (under 30-page max) · {wordCount.toLocaleString()} words extracted
+                        {uploadedPages} page(s) (under 100-page max) · {wordCount.toLocaleString()} words extracted
                       </p>
                     </div>
                   </div>
@@ -375,7 +375,7 @@ export default function DrillbitPlagiarismPage() {
                     <div className="space-y-2">
                       <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
                       <p className="text-sm font-medium">Extracting document pages and counting words...</p>
-                      <p className="text-xs text-muted-foreground">Verifying 30-page maximum limit...</p>
+                      <p className="text-xs text-muted-foreground">Verifying 100-page maximum limit...</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -386,7 +386,7 @@ export default function DrillbitPlagiarismPage() {
                         Click to upload your Document (.PDF, .DOCX, .DOC, .TXT, .MD)
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Maximum limit: <strong className="text-foreground">30 pages</strong> per check. Fully extracts text and structure.
+                        Maximum limit: <strong className="text-foreground">100 pages</strong> per check. Fully extracts text and structure.
                       </p>
                       <div className="pt-2">
                         <span className="inline-block text-[11px] bg-muted px-3 py-1 rounded-full text-muted-foreground border">
@@ -477,7 +477,7 @@ export default function DrillbitPlagiarismPage() {
           <div className="flex items-center gap-2">
             <Button
               onClick={handleRunCheck}
-              disabled={analyzing || fileLoading || !text.trim() || computedPages > 30}
+              disabled={analyzing || fileLoading || !text.trim() || computedPages > 100}
               className="gap-2"
             >
               {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
@@ -556,7 +556,7 @@ export default function DrillbitPlagiarismPage() {
                   </div>
                   <h2 className="text-xl font-bold mt-1">{report.title}</h2>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Analyzed on {new Date(report.analyzedAt).toLocaleString()} · {report.wordCount.toLocaleString()} words · {computedPages} page(s) (Limit: 30)
+                    Analyzed on {new Date(report.analyzedAt).toLocaleString()} · {report.wordCount.toLocaleString()} words · {computedPages} page(s) (Limit: 100)
                   </p>
                 </div>
 

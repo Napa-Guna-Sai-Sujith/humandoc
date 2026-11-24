@@ -1,4 +1,4 @@
-"""Drillbit / HD Plagiarism document extraction service with 30-page maximum limit."""
+"""Drillbit / HD Plagiarism document extraction service with 100-page maximum limit."""
 from __future__ import annotations
 
 import io
@@ -8,7 +8,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 router = APIRouter(prefix="/drillbit", tags=["drillbit"])
 
-MAX_PAGES = 30
+MAX_PAGES = 100
 
 
 @router.post("/extract")
@@ -32,7 +32,7 @@ async def extract_document(file: UploadFile = File(...)) -> dict:
             if pages > MAX_PAGES:
                 raise HTTPException(
                     status.HTTP_400_BAD_REQUEST,
-                    f"Document exceeds 30-page limit. This PDF contains {pages} pages (maximum allowed is {MAX_PAGES} pages).",
+                    f"Document exceeds 100-page limit. This PDF contains {pages} pages (maximum allowed is {MAX_PAGES} pages).",
                 )
             page_texts = [p.get_text() for p in doc]
             text = "\n\n".join(page_texts).strip()
@@ -53,7 +53,7 @@ async def extract_document(file: UploadFile = File(...)) -> dict:
             if pages > MAX_PAGES:
                 raise HTTPException(
                     status.HTTP_400_BAD_REQUEST,
-                    f"Document exceeds 30-page limit. This document contains ~{pages} pages (maximum allowed is {MAX_PAGES} pages).",
+                    f"Document exceeds 100-page limit. This document contains ~{pages} pages (maximum allowed is {MAX_PAGES} pages).",
                 )
         except HTTPException:
             raise
@@ -71,7 +71,7 @@ async def extract_document(file: UploadFile = File(...)) -> dict:
         if pages > MAX_PAGES:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                f"Document exceeds 30-page limit. This document contains ~{pages} pages (maximum allowed is {MAX_PAGES} pages).",
+                f"Document exceeds 100-page limit. This document contains ~{pages} pages (maximum allowed is {MAX_PAGES} pages).",
             )
 
     words = len(text.split())
