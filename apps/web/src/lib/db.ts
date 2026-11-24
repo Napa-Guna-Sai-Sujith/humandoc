@@ -2,7 +2,7 @@ import { Pool, type QueryResultRow } from "pg";
 
 const connectionString =
   process.env.DATABASE_URL_PG ||
-  (process.env.DATABASE_URL || "").replace("postgresql+asyncpg://", "postgresql://");
+  (process.env.DATABASE_URL || "").replace("postgresql+asyncpg://", "postgresql://").replace("ssl=require", "sslmode=require");
 
 const globalForPg = globalThis as unknown as { pool?: Pool };
 
