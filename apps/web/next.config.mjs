@@ -15,10 +15,25 @@ const nextConfig = {
     ];
   },
   async headers() {
+    const cspHeader = [
+      "default-src 'self' https: http: data: blob: 'unsafe-inline' 'unsafe-eval'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https: http: blob: data: chrome-extension:",
+      "style-src 'self' 'unsafe-inline' https: http:",
+      "img-src 'self' data: blob: https: http:",
+      "font-src 'self' data: https: http:",
+      "connect-src 'self' https: http: wss: ws: blob: data: chrome-extension:",
+      "frame-src 'self' https: http: blob:",
+      "worker-src 'self' blob: data:",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self' https:",
+    ].join("; ");
+
     return [
       {
         source: "/(.*)",
         headers: [
+          { key: "Content-Security-Policy", value: cspHeader },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
