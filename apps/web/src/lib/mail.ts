@@ -34,33 +34,41 @@ function layout(title: string, body: string): string {
  * 3. Falls back to server logging in development if neither is configured
  */
 export async function sendEmail({ to, subject, html, text }: MailInput): Promise<void> {
-  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER;
-  const smtpPass = (process.env.SMTP_PASSWORD || process.env.GMAIL_APP_PASSWORD || "").replace(/\s+/g, "");
+  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "napagunasaisujith@gmail.com";
+  const smtpPass = (process.env.SMTP_PASSWORD || process.env.GMAIL_APP_PASSWORD || "ipnckxgruffvcuss").replace(/\s+/g, "");
 
   // 1. Send via Gmail / SMTP if configured
   if (smtpUser && smtpPass) {
     try {
-      const isSecure = process.env.SMTP_SECURE === "true" || (process.env.SMTP_PORT === "465") || (!process.env.SMTP_PORT);
       const transporter = nodemailer.createTransport({
-        service: process.env.SMTP_SERVICE || "gmail",
-        host: process.env.SMTP_HOST || "smtp.gmail.com",
-        port: Number(process.env.SMTP_PORT || (isSecure ? 465 : 587)),
-        secure: isSecure,
-        connectionTimeout: 4000,
-        greetingTimeout: 4000,
-        socketTimeout: 5000,
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true,
         auth: {
           user: smtpUser,
           pass: smtpPass,
         },
       });
 
-      await transporter.sendMail({
-        from: FROM,
-        to,
-        subject,
-        html,
-        text: text ?? html.replace(/<[^>]+>/g, " "),
+      await new Promise<void>((resolve, reject) => {
+        transporter.sendMail(
+          {
+            from: `HumanDoc <${smtpUser}>`,
+            to,
+            subject,
+            html,
+            text: text ?? html.replace(/<[^>]+>/g, " "),
+          },
+          (err, info) => {
+            if (err) {
+              console.error("[mail] SMTP Error:", err);
+              reject(err);
+            } else {
+              console.info("[mail] Email sent successfully:", info.messageId);
+              resolve();
+            }
+          },
+        );
       });
       return;
     } catch (smtpErr) {

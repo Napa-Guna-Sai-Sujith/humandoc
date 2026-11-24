@@ -116,9 +116,11 @@ export async function registerUser(input: {
 export async function sendVerification(userId: string, email: string, token: string): Promise<void> {
   const url = `${APP_URL}/verify-email?token=${encodeURIComponent(token)}`;
   console.info(`[auth] Verification email for ${email}: ${url}`);
-  sendVerificationEmail(email, url).catch((err) => {
+  try {
+    await sendVerificationEmail(email, url);
+  } catch (err) {
     console.error("[auth] Verification email dispatch error:", err);
-  });
+  }
   await pool.query("INSERT INTO audit_logs (user_id, action, meta) VALUES ($1, 'auth.verification_sent', $2)", [
     userId,
     JSON.stringify({ email }),
@@ -222,9 +224,11 @@ export async function requestPasswordReset(emailInput: string): Promise<void> {
   );
   const url = `${APP_URL}/reset-password?token=${encodeURIComponent(token)}`;
   console.info(`[auth] Password reset requested for ${user.email}: ${url}`);
-  sendPasswordResetEmail(user.email, url).catch((err) => {
+  try {
+    await sendPasswordResetEmail(user.email, url);
+  } catch (err) {
     console.error("[auth] Password reset email dispatch error:", err);
-  });
+  }
 }
 
 export async function resetPasswordWithToken(rawToken: string, newPassword: string): Promise<string | null> {
