@@ -1,6 +1,9 @@
+import ssl
 from celery import Celery
 
 from app.core.config import settings
+
+_use_ssl = {"ssl_cert_reqs": ssl.CERT_NONE} if settings.celery_broker_url.startswith("rediss://") else None
 
 celery_app = Celery(
     "humandoc",
@@ -9,6 +12,8 @@ celery_app = Celery(
     include=["app.workers.tasks"],
 )
 celery_app.conf.update(
+    broker_use_ssl=_use_ssl,
+    redis_backend_use_ssl=_use_ssl,
     task_default_queue="humandoc",
     task_serializer="json",
     result_serializer="json",

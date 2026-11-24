@@ -86,6 +86,15 @@ class Settings(BaseSettings):
                 self.celery_broker_url = self.redis_url
             if "localhost" in self.celery_result_backend or "redis:6379" in self.celery_result_backend:
                 self.celery_result_backend = self.redis_url
+
+        def _ensure_ssl(u: str) -> str:
+            if u.startswith("rediss://") and "ssl_cert_reqs" not in u:
+                sep = "&" if "?" in u else "?"
+                return f"{u}{sep}ssl_cert_reqs=CERT_NONE"
+            return u
+
+        self.celery_broker_url = _ensure_ssl(self.celery_broker_url)
+        self.celery_result_backend = _ensure_ssl(self.celery_result_backend)
         return self
 
     field_encryption_key: str = ""
