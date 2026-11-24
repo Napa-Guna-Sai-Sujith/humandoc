@@ -36,7 +36,13 @@ const TIERS: Tier[] = [
     pages: 20,
     price: 0,
     blurb: "For trying it out on a short paper.",
-    features: ["20 pages a month", "PDF, DOCX, PPTX, Markdown", "Block locking", "QA report", "7-day auto-delete"],
+    features: [
+      "20 pages a month",
+      "PDF, DOCX, PPTX, Markdown",
+      "Drillbit similarity & AI preview",
+      "Block locking & QA report",
+      "7-day auto-delete",
+    ],
   },
   {
     id: "starter",
@@ -44,7 +50,13 @@ const TIERS: Tier[] = [
     pages: 100,
     price: 12,
     blurb: "For a thesis chapter or a weekly report.",
-    features: ["100 pages a month", "Priority queue", "Side-by-side preview", "Custom instructions", "Email support"],
+    features: [
+      "100 pages a month",
+      "Drillbit Plagiarism Check engine",
+      "Auto-humanize to <10% Drillbit Safe",
+      "Priority queue & preview",
+      "Email support",
+    ],
   },
   {
     id: "pro",
@@ -52,7 +64,13 @@ const TIERS: Tier[] = [
     pages: 500,
     price: 29,
     blurb: "For teams that rewrite every week.",
-    features: ["500 pages a month", "Priority queue", "Glossary memory", "Bulk page ranges", "Email support"],
+    features: [
+      "500 pages a month",
+      "Drillbit Extreme AI & Similarity",
+      "0% AI & <5% Plagiarism Guarantee",
+      "UGC & University Compliance Report",
+      "Bulk page ranges & glossary",
+    ],
   },
   {
     id: "studio",
@@ -60,7 +78,13 @@ const TIERS: Tier[] = [
     pages: 2000,
     price: 79,
     blurb: "For agencies and research groups.",
-    features: ["2,000 pages a month", "Highest priority", "Dedicated worker pool", "Custom retention window", "Support SLA"],
+    features: [
+      "2,000 pages a month",
+      "Unlimited Drillbit deep scans",
+      "Dedicated journal database pool",
+      "Highest priority & SLA",
+      "Custom retention window",
+    ],
   },
 ];
 

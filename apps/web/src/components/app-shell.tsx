@@ -23,6 +23,7 @@ import { cn, timeAgo } from "@/lib/utils";
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/jobs/new", label: "New job", icon: Sparkles },
+  { href: "/drillbit", label: "Drillbit Plagiarism", icon: ShieldCheck },
   { href: "/history", label: "History", icon: History },
   { href: "/pricing", label: "Pricing & usage", icon: BarChart3 },
   { href: "/invoices", label: "Invoices", icon: CreditCard },
