@@ -111,10 +111,13 @@ def _classify(block: dict[str, Any], page_height: float, page_width: float, in_t
     if y1 < top_margin or y0 > page_height - bottom_margin:
         if len(text) < 240:
             return "header_footer", "header_footer"
+    if re.match(r"^(chapter\s+\d+|[0-9]+(\.[0-9]+)*\s+[A-Z]|table\s+of\s+contents|certificate|declaration|acknowledgement|submitted\s+by|under\s+the\s+guidance|signature\s+of)", text, re.I):
+        if len(text) < 180 or (text.count("\n") <= 4 and len(text) < 250):
+            return "heading", "structural_template"
     if first:
         size = first.get("size", 11)
-        if size >= 16 or (first.get("flags", 0) & BOLD_FLAG and size >= 13):
-            return "heading", ""
+        if size >= 16 or (first.get("flags", 0) & BOLD_FLAG and size >= 12.5 and len(text) < 160):
+            return "heading", "heading"
     if re.match(r"^(figure|fig\.|table|tab\.)\s*\d+", text, re.I) and len(text) < 300:
         return "caption", "caption"
     if re.match(r"^(\d+\.|[a-z]\)|[•·–—-])\s+", text):

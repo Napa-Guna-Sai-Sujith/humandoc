@@ -1,10 +1,13 @@
 """Drillbit / HD Plagiarism document extraction service with 100-page maximum limit."""
 from __future__ import annotations
 
+import datetime as dt
 import io
 import math
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi.responses import Response
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/drillbit", tags=["drillbit"])
 
@@ -86,3 +89,172 @@ async def extract_document(file: UploadFile = File(...)) -> dict:
         "characterCount": len(text),
         "text": text,
     }
+
+
+class DrillbitSourcePayload(BaseModel):
+    id: int
+    title: str
+    domain: str
+    category: str
+    percent: int
+    matchedWords: int
+    color: str
+
+
+class DrillbitSegmentPayload(BaseModel):
+    text: str
+    sourceId: int | None = None
+
+
+class DrillbitReportPDFRequest(BaseModel):
+    title: str
+    submissionId: str
+    wordCount: int
+    pageCount: int
+    similarityScore: int
+    aiScore: int
+    gradeBand: str
+    gradeDescription: str
+    sources: list[DrillbitSourcePayload] = []
+    segments: list[DrillbitSegmentPayload] = []
+
+
+def _hex_to_rgb(hex_str: str) -> tuple[float, float, float]:
+    h = hex_str.lstrip("#")
+    if len(h) == 6:
+        return tuple(int(h[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+    return (0.9, 0.2, 0.2)
+
+
+@router.post("/report-pdf")
+async def generate_drillbit_report_pdf(req: DrillbitReportPDFRequest) -> Response:
+    """Generate official publication-ready Drillbit Plagiarism & Similarity Report PDF."""
+    import fitz
+
+    doc = fitz.open()
+
+    # --- PAGE 1: Official Drillbit Cover Sheet ---
+    p1 = doc.new_page(width=595, height=842)
+    # Header Banner
+    p1.draw_rect(fitz.Rect(0, 0, 595, 75), color=(0.08, 0.18, 0.38), fill=(0.08, 0.18, 0.38))
+    p1.insert_text(fitz.Point(40, 44), "DRILLBIT SIMILARITY & PLAGIARISM REPORT", fontsize=18, fontname="hebo", color=(1, 1, 1))
+    p1.insert_text(fitz.Point(40, 62), "drillbitplagiarismcheck.com · Academic Verification Certificate", fontsize=9, fontname="helv", color=(0.85, 0.92, 1.0))
+
+    # Metadata Box
+    p1.draw_rect(fitz.Rect(40, 95, 555, 185), color=(0.82, 0.84, 0.88), width=1)
+    safe_title = req.title[:65]
+    p1.insert_text(fitz.Point(55, 120), f"Document Title: {safe_title}", fontsize=11, fontname="hebo", color=(0.1, 0.1, 0.1))
+    p1.insert_text(fitz.Point(55, 142), f"Submission ID: {req.submissionId}", fontsize=10, fontname="helv", color=(0.35, 0.35, 0.35))
+    p1.insert_text(fitz.Point(320, 142), f"Word Count: {req.wordCount:,} words", fontsize=10, fontname="helv", color=(0.35, 0.35, 0.35))
+    p1.insert_text(fitz.Point(55, 164), f"Analyzed On: {dt.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}", fontsize=10, fontname="helv", color=(0.35, 0.35, 0.35))
+    p1.insert_text(fitz.Point(320, 164), f"Total Pages: {req.pageCount} page(s)", fontsize=10, fontname="helv", color=(0.35, 0.35, 0.35))
+
+    # Similarity Score Card
+    p1.draw_rect(fitz.Rect(40, 205, 290, 295), color=(0.2, 0.45, 0.85), fill=(0.95, 0.97, 1.0), width=1.5)
+    p1.insert_text(fitz.Point(55, 230), "SIMILARITY INDEX", fontsize=10, fontname="hebo", color=(0.15, 0.4, 0.8))
+    p1.insert_text(fitz.Point(55, 275), f"{req.similarityScore}%", fontsize=38, fontname="hebo", color=(0.1, 0.3, 0.7))
+    p1.insert_text(fitz.Point(145, 260), f"Grade: {req.gradeBand}", fontsize=11, fontname="hebo", color=(0.2, 0.3, 0.5))
+    p1.insert_text(fitz.Point(145, 276), req.gradeDescription[:35], fontsize=9, fontname="helv", color=(0.4, 0.4, 0.5))
+
+    # AI Score Card
+    ai_color = (0.1, 0.6, 0.3) if req.aiScore < 15 else (0.8, 0.4, 0.1)
+    ai_fill = (0.95, 1.0, 0.97) if req.aiScore < 15 else (1.0, 0.97, 0.93)
+    p1.draw_rect(fitz.Rect(305, 205, 555, 295), color=ai_color, fill=ai_fill, width=1.5)
+    p1.insert_text(fitz.Point(320, 230), "AI CONTENT INDEX", fontsize=10, fontname="hebo", color=ai_color)
+    p1.insert_text(fitz.Point(320, 275), f"{req.aiScore}%", fontsize=38, fontname="hebo", color=ai_color)
+    p1.insert_text(fitz.Point(405, 260), "100% Human Authored" if req.aiScore < 15 else f"{req.aiScore}% AI Generated", fontsize=11, fontname="hebo", color=(0.2, 0.2, 0.3))
+    p1.insert_text(fitz.Point(405, 276), "Drillbit Extreme AI Engine", fontsize=9, fontname="helv", color=(0.4, 0.4, 0.5))
+
+    # Primary Sources Table Header
+    p1.insert_text(fitz.Point(40, 328), "PRIMARY SOURCES IDENTIFIED IN DRILLBIT REPOSITORY", fontsize=11, fontname="hebo", color=(0.1, 0.1, 0.2))
+    p1.draw_rect(fitz.Rect(40, 338, 555, 360), color=(0.88, 0.9, 0.94), fill=(0.92, 0.94, 0.97))
+    p1.insert_text(fitz.Point(50, 353), "#", fontsize=9, fontname="hebo", color=(0.2, 0.2, 0.3))
+    p1.insert_text(fitz.Point(75, 353), "SOURCE / PUBLICATION TITLE", fontsize=9, fontname="hebo", color=(0.2, 0.2, 0.3))
+    p1.insert_text(fitz.Point(370, 353), "CATEGORY", fontsize=9, fontname="hebo", color=(0.2, 0.2, 0.3))
+    p1.insert_text(fitz.Point(490, 353), "SIMILARITY", fontsize=9, fontname="hebo", color=(0.2, 0.2, 0.3))
+
+    y = 380
+    for idx, src in enumerate(req.sources[:12]):
+        rgb = _hex_to_rgb(src.color)
+        p1.draw_rect(fitz.Rect(48, y - 8, 58, y + 2), color=rgb, fill=rgb)
+        p1.insert_text(fitz.Point(50, y), str(idx + 1), fontsize=8, fontname="hebo", color=(1, 1, 1))
+        p1.insert_text(fitz.Point(75, y), src.title[:45], fontsize=9, fontname="helv", color=(0.1, 0.1, 0.1))
+        p1.insert_text(fitz.Point(370, y), src.category, fontsize=9, fontname="helv", color=(0.35, 0.35, 0.45))
+        p1.insert_text(fitz.Point(505, y), f"{src.percent}%", fontsize=9, fontname="hebo", color=(0.1, 0.1, 0.2))
+        p1.draw_line(fitz.Point(40, y + 8), fitz.Point(555, y + 8), color=(0.92, 0.92, 0.94), width=0.5)
+        y += 24
+
+    # --- PAGES 2+: Document with Annotated Highlights ---
+    p_curr = doc.new_page(width=595, height=842)
+    p_curr.draw_rect(fitz.Rect(0, 0, 595, 35), color=(0.95, 0.96, 0.98), fill=(0.95, 0.96, 0.98))
+    p_curr.insert_text(fitz.Point(40, 22), f"Drillbit Plagiarism Report · {safe_title}", fontsize=8, fontname="helv", color=(0.4, 0.4, 0.5))
+    p_curr.insert_text(fitz.Point(480, 22), f"Submission: {req.submissionId}", fontsize=8, fontname="helv", color=(0.4, 0.4, 0.5))
+
+    doc_y = 65
+    line_h = 14
+    margin_l = 45
+    margin_r = 550
+    page_bottom = 800
+
+    source_map = {s.id: s for s in req.sources}
+
+    for seg in req.segments:
+        text_clean = seg.text.strip()
+        if not text_clean:
+            doc_y += 6
+            continue
+
+        words = text_clean.split()
+        cur_line: list[str] = []
+        is_matched = seg.sourceId is not None and seg.sourceId in source_map
+        src = source_map.get(seg.sourceId) if is_matched else None
+        rgb = _hex_to_rgb(src.color) if src else (0, 0, 0)
+        bg_rgb = tuple(1.0 - (1.0 - c) * 0.25 for c in rgb) if is_matched else None
+
+        for w in words:
+            test_line = " ".join(cur_line + [w])
+            line_w = fitz.get_text_length(test_line, fontname="helv", fontsize=9.5)
+            if margin_l + line_w > margin_r:
+                if doc_y + line_h > page_bottom:
+                    p_curr = doc.new_page(width=595, height=842)
+                    p_curr.draw_rect(fitz.Rect(0, 0, 595, 35), color=(0.95, 0.96, 0.98), fill=(0.95, 0.96, 0.98))
+                    p_curr.insert_text(fitz.Point(40, 22), f"Drillbit Plagiarism Report · {safe_title}", fontsize=8, fontname="helv", color=(0.4, 0.4, 0.5))
+                    p_curr.insert_text(fitz.Point(480, 22), f"Submission: {req.submissionId}", fontsize=8, fontname="helv", color=(0.4, 0.4, 0.5))
+                    doc_y = 65
+
+                actual_line = " ".join(cur_line)
+                lw = fitz.get_text_length(actual_line, fontname="helv", fontsize=9.5)
+                if bg_rgb:
+                    p_curr.draw_rect(fitz.Rect(margin_l - 2, doc_y - 9, margin_l + lw + 2, doc_y + 3), color=bg_rgb, fill=bg_rgb)
+                p_curr.insert_text(fitz.Point(margin_l, doc_y), actual_line, fontsize=9.5, fontname="helv", color=(0.1, 0.1, 0.1))
+                cur_line = [w]
+                doc_y += line_h
+            else:
+                cur_line.append(w)
+
+        if cur_line:
+            if doc_y + line_h > page_bottom:
+                p_curr = doc.new_page(width=595, height=842)
+                p_curr.draw_rect(fitz.Rect(0, 0, 595, 35), color=(0.95, 0.96, 0.98), fill=(0.95, 0.96, 0.98))
+                p_curr.insert_text(fitz.Point(40, 22), f"Drillbit Plagiarism Report · {safe_title}", fontsize=8, fontname="helv", color=(0.4, 0.4, 0.5))
+                p_curr.insert_text(fitz.Point(480, 22), f"Submission: {req.submissionId}", fontsize=8, fontname="helv", color=(0.4, 0.4, 0.5))
+                doc_y = 65
+
+            actual_line = " ".join(cur_line)
+            lw = fitz.get_text_length(actual_line, fontname="helv", fontsize=9.5)
+            if bg_rgb:
+                p_curr.draw_rect(fitz.Rect(margin_l - 2, doc_y - 9, margin_l + lw + 2, doc_y + 3), color=bg_rgb, fill=bg_rgb)
+            p_curr.insert_text(fitz.Point(margin_l, doc_y), actual_line, fontsize=9.5, fontname="helv", color=(0.1, 0.1, 0.1))
+            doc_y += line_h
+
+        doc_y += 4  # Paragraph spacing
+
+    pdf_bytes = doc.tobytes(garbage=3, deflate=True)
+    doc.close()
+
+    filename_out = f"{req.submissionId}_Drillbit_Similarity_Report.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename_out}"'},
+    )

@@ -55,7 +55,6 @@ export function AppShell({ user, children }: { user: User; children: React.React
     router.refresh();
   };
 
-  const pct = usage ? Math.min(100, (usage.pagesUsed / Math.max(1, usage.pagesPerMonth)) * 100) : 0;
   const initials = (user.name || user.email || "U").slice(0, 2).toUpperCase();
 
   return (
@@ -97,22 +96,6 @@ export function AppShell({ user, children }: { user: User; children: React.React
             </Link>
           ) : null}
         </nav>
-
-        {/* Monthly Pages Usage */}
-        <div className="border-t p-3">
-          <div className="mb-2 flex items-center justify-between text-xs">
-            <span className="font-medium text-muted-foreground text-[11px]">Monthly pages</span>
-            <span className="font-medium text-[11px]">
-              {usage ? `${usage.pagesUsed}/${usage.pagesPerMonth}` : "—"}
-            </span>
-          </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
-          </div>
-          <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-            {usage?.tier ?? "free"} plan
-          </p>
-        </div>
 
         {/* Queries & Support Contact */}
         <div className="border-t p-3 bg-primary/5 text-xs">

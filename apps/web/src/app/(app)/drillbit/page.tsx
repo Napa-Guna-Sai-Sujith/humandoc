@@ -223,6 +223,58 @@ export default function DrillbitPlagiarismPage() {
     toast({ title: "Downloaded", description: "Humanized document saved to your device." });
   };
 
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  const handleDownloadReportPdf = async () => {
+    if (!report) return;
+    setDownloadingPdf(true);
+    try {
+      const res = await fetch("/api/drillbit/report-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: report.title,
+          submissionId: report.submissionId,
+          wordCount: report.wordCount,
+          pageCount: computedPages,
+          similarityScore: report.similarityScore,
+          aiScore: report.aiScore,
+          gradeBand: report.gradeBand,
+          gradeDescription: report.gradeDescription,
+          sources: report.sources,
+          segments: report.segments,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to generate report PDF");
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${report.submissionId}_Drillbit_Similarity_Report.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      toast({
+        title: "Report Downloaded",
+        description: `Official Drillbit Similarity Report PDF saved (${report.similarityScore}% similarity).`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Download Failed",
+        description: err.message || "Could not generate PDF report. Please try again.",
+        variant: "error",
+      });
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
   const computedPages = uploadedPages ?? Math.max(1, Math.ceil(wordCount / 350));
   const isSafe = report ? report.similarityScore <= 10 : false;
@@ -560,7 +612,21 @@ export default function DrillbitPlagiarismPage() {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleDownloadReportPdf}
+                    disabled={downloadingPdf}
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm"
+                  >
+                    {downloadingPdf ? (
+                      <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5 mr-1.5" />
+                    )}
+                    Drillbit Report (.pdf)
+                  </Button>
                   <Button variant="outline" size="sm" onClick={handleRunCheck}>
                     <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Re-scan
                   </Button>
@@ -791,15 +857,29 @@ export default function DrillbitPlagiarismPage() {
               <span className="text-xs text-muted-foreground">
                 HD Plagiarism Check algorithm · For queries: napagunasaisujith@gmail.com · &copy; 2026 HumanDoc HD
               </span>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleCopyText}>
-                  <Copy className="h-4 w-4 mr-1.5" /> Copy Clean Text
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleDownloadReportPdf}
+                  disabled={downloadingPdf}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm"
+                >
+                  {downloadingPdf ? (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-1.5" />
+                  )}
+                  Drillbit Report (.pdf)
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleDownloadText}>
-                  <Download className="h-4 w-4 mr-1.5" /> Download (.txt)
+                  <Download className="h-4 w-4 mr-1.5" /> Text (.txt)
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleCopyText}>
+                  <Copy className="h-4 w-4 mr-1.5" /> Copy Text
                 </Button>
                 {!isSafe ? (
-                  <Button size="sm" onClick={handleHumanize} disabled={humanizing} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                  <Button size="sm" onClick={handleHumanize} disabled={humanizing} className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium">
                     <Sparkles className="h-4 w-4 mr-1.5" /> Convert &amp; Humanize
                   </Button>
                 ) : null}

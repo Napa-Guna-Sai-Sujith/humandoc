@@ -147,6 +147,57 @@ def _insert(page: fitz.Page, rect: fitz.Rect, text: str, fontname: str, size: fl
         )
 
 
+def _fit_and_insert(
+    page: fitz.Page,
+    rect: fitz.Rect,
+    text: str,
+    fontname: str,
+    base_size: float,
+    color: tuple[float, float, float],
+    align: int,
+    lineheight: float = 1.18,
+) -> tuple[float, float]:
+    """Fit text into rect adjusting font size dynamically to avoid overflow or huge white space.
+    Returns (used_size, spare_space).
+    """
+    # Normalize paragraph text: collapse internal hard line breaks to let text flow naturally
+    norm_text = " ".join(text.split()) if "\n" in text and len(text) > 40 else text.strip()
+    
+    # Calculate box with proper font metrics headroom and margin bounds
+    v_pad = max(4.0, base_size * 0.35)
+    page_w = page.rect.width
+    r_x1 = max(rect.x1 + 4.0, page_w - 60.0 if rect.x1 > page_w * 0.72 else rect.x1 + 4.0)
+    box = fitz.Rect(rect.x0, rect.y0 - 0.5, r_x1, rect.y1 + v_pad)
+    
+    candidates = [
+        base_size,
+        base_size * 0.98,
+        base_size * 0.95,
+        base_size * 0.92,
+        base_size * 0.88,
+        base_size * 0.84,
+        base_size * 0.80,
+        base_size * 0.76,
+        7.5,
+    ]
+    
+    for sz in candidates:
+        spare = _insert(page, box, norm_text, fontname, sz, color, align, lineheight)
+        if spare >= 0:
+            return sz, spare
+        # Clear partial attempt before trying next size
+        page.add_redact_annot(box + (-1, -1, 1, 1), fill=False, text="")
+        page.apply_redactions(
+            images=fitz.PDF_REDACT_IMAGE_NONE,
+            graphics=fitz.PDF_REDACT_LINE_ART_NONE,
+            text=fitz.PDF_REDACT_TEXT_REMOVE,
+        )
+
+    # Final attempt with smallest readable size
+    spare = _insert(page, box, norm_text, fontname, candidates[-1], color, align, lineheight)
+    return candidates[-1], spare
+
+
 def rebuild_pdf(
     src: str | Path,
     dst: str | Path,
@@ -194,44 +245,27 @@ def rebuild_pdf(
             else:
                 report.fonts_substituted += 1
 
-            size = max(4.0, min(float(block.size) or 11.0, rect.height * 0.95))
+            orig_size = float(block.size) if block.size else 11.0
+            size = max(6.0, orig_size)
             color = _color_tuple(block.color or 0)
             align = ALIGN_MAP.get(block.align, fitz.TEXT_ALIGN_LEFT)
-            lineheight = 1.18
             text = block.new_text
-            spare = _insert(page, rect, text, fontname, size, color, align, lineheight)
 
-            if spare < 0:
-                shrunk = size * 0.96
-                spare = _insert(page, rect, text, fontname, shrunk, color, align, lineheight)
-                if spare >= 0:
-                    report.overflow_fixes.append(PageFix(block.id, "shrunk", size, shrunk, "4% font shrink"))
-                    size = shrunk
-                else:
-                    shrunk = size * 0.92
-                    spare = _insert(page, rect, text, fontname, shrunk, color, align, lineheight)
+            used_size, spare = _fit_and_insert(page, rect, text, fontname, size, color, align)
+            if used_size < size:
+                report.overflow_fixes.append(
+                    PageFix(block.id, "shrunk", size, used_size, f"{round((1 - used_size / size) * 100)}% font fitted")
+                )
+            if spare < 0 and shorter:
+                max_chars = max(20, int(len(text) * 0.82))
+                shorter_text = shorter(block, max_chars)
+                if shorter_text and len(shorter_text) < len(text):
+                    used_size, spare = _fit_and_insert(page, rect, shorter_text, fontname, size, color, align)
                     if spare >= 0:
-                        report.overflow_fixes.append(PageFix(block.id, "shrunk", size, shrunk, "8% font shrink"))
-                        size = shrunk
-                    else:
-                        max_chars = max(20, int(len(text) * 0.82))
-                        shorter_text = shorter(block, max_chars) if shorter else None
-                        if shorter_text and len(shorter_text) < len(text):
-                            spare = _insert(page, rect, shorter_text, fontname, size * 0.92, color, align, lineheight)
-                            if spare >= 0:
-                                block.new_text = shorter_text
-                                report.overflow_fixes.append(
-                                    PageFix(block.id, "shortened", size, size * 0.92, f"{len(text)}→{len(shorter_text)} chars")
-                                )
-                                text = shorter_text
-                                size = size * 0.92
-                        if spare < 0:
-                            _insert(page, rect, block.text, fontname, size * 0.92, color, align, lineheight)
-                            block.new_text = block.text
-                            block.flag = "overflow-kept-original"
-                            report.overflow_fixes.append(
-                                PageFix(block.id, "kept-original", size, size * 0.92, "could not fit shortened text")
-                            )
+                        block.new_text = shorter_text
+                        report.overflow_fixes.append(
+                            PageFix(block.id, "shortened", size, used_size, f"{len(text)}→{len(shorter_text)} chars")
+                        )
             report.rewritten_blocks += 1
 
     doc.save(dst, garbage=3, deflate=True, clean=True)
