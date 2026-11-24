@@ -71,8 +71,16 @@ export default function DrillbitPlagiarismPage() {
 
   const extractPdfClient = async (file: File): Promise<{ text: string; pages: number }> => {
     const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+      pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+    }
     const arrayBuffer = await file.arrayBuffer();
-    const loadingTask = pdfjs.getDocument({ data: new Uint8Array(arrayBuffer) });
+    const loadingTask = pdfjs.getDocument({
+      data: new Uint8Array(arrayBuffer),
+      useWorkerFetch: false,
+      isEvalSupported: false,
+      useSystemFonts: true,
+    });
     const pdf = await loadingTask.promise;
     let fullText = "";
     for (let i = 1; i <= pdf.numPages; i++) {
@@ -165,15 +173,42 @@ export default function DrillbitPlagiarismPage() {
       }
     }
 
-    // Fallback: server-side extraction
+    // Server-side extraction fallback
+    // Note: Vercel serverless has a strict 4.5MB request payload limit.
+    // For files > 4MB (like patent.pdf) or upon 413, route directly to the FastAPI engine on Render/localhost.
+    const backendDirect =
+      process.env.NEXT_PUBLIC_API_URL ||
+      (typeof window !== "undefined" && window.location.hostname === "localhost"
+        ? "http://localhost:8000"
+        : "https://humandoc.onrender.com");
+
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      const res = await fetch("/api/drillbit/extract", {
-        method: "POST",
-        body: formData,
-      });
+      let res: Response;
+      if (file.size > 4 * 1024 * 1024) {
+        // Direct to backend parser to bypass Vercel 4.5MB payload limit
+        res = await fetch(`${backendDirect}/drillbit/extract`, {
+          method: "POST",
+          body: formData,
+        });
+      } else {
+        res = await fetch("/api/drillbit/extract", {
+          method: "POST",
+          body: formData,
+        });
+        if (res.status === 413 || !res.ok) {
+          // If Vercel edge proxy rejected it, retry directly with the backend
+          const retryRes = await fetch(`${backendDirect}/drillbit/extract`, {
+            method: "POST",
+            body: formData,
+          }).catch(() => null);
+          if (retryRes && retryRes.ok) {
+            res = retryRes;
+          }
+        }
+      }
 
       const data = await res.json().catch(() => ({}));
 
