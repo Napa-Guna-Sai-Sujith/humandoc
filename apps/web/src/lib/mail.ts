@@ -3,7 +3,7 @@ import nodemailer from "nodemailer";
 
 type MailInput = { to: string; subject: string; html: string; text?: string };
 
-const FROM = process.env.EMAIL_FROM || "HumanDoc <napagunasaisujith@gmail.com>";
+const FROM = process.env.EMAIL_FROM || process.env.SMTP_USER || "HumanDoc <no-reply@humandoc.local>";
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] as string);
@@ -28,32 +28,40 @@ function layout(title: string, body: string): string {
 }
 
 /**
- * Email delivery via Gmail SMTP (App Password) or Resend REST API.
+ * Universal email delivery:
+ * 1. Supports Gmail / SMTP via nodemailer (using Google App Passwords)
+ * 2. Supports Resend REST API
+ * 3. Falls back to server logging in development if neither is configured
  */
 export async function sendEmail({ to, subject, html, text }: MailInput): Promise<void> {
-  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "napagunasaisujith@gmail.com";
+  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER;
   const smtpPass = (process.env.SMTP_PASSWORD || process.env.GMAIL_APP_PASSWORD || "").replace(/\s+/g, "");
 
-  if (smtpPass) {
+  // 1. Send via Gmail / SMTP if configured
+  if (smtpUser && smtpPass) {
     const transporter = nodemailer.createTransport({
-      service: "gmail",
+      service: process.env.SMTP_SERVICE || "gmail",
+      host: process.env.SMTP_HOST || "smtp.gmail.com",
+      port: Number(process.env.SMTP_PORT || 465),
+      secure: Boolean(process.env.SMTP_SECURE ?? true),
       auth: {
         user: smtpUser,
         pass: smtpPass,
       },
     });
+
     await transporter.sendMail({
       from: FROM,
       to,
       subject,
-      text: text ?? html.replace(/<[^>]+>/g, " "),
       html,
+      text: text ?? html.replace(/<[^>]+>/g, " "),
     });
     return;
   }
 
+  // 2. Send via Resend if API key is provided
   const apiKey = process.env.RESEND_API_KEY;
-
   if (apiKey) {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -68,9 +76,9 @@ export async function sendEmail({ to, subject, html, text }: MailInput): Promise
     return;
   }
 
+  // 3. Development fallback
   if (process.env.NODE_ENV === "production") {
-    console.warn(`[email] Neither SMTP nor RESEND_API_KEY is configured. Simulating delivery to: ${to}`);
-    return;
+    throw new Error("No email provider configured. Set SMTP_USER and SMTP_PASSWORD or RESEND_API_KEY.");
   }
   console.info(`\n[dev email] to=${to} subject=${subject}\n${text ?? html.replace(/<[^>]+>/g, " ")}\n`);
 }
