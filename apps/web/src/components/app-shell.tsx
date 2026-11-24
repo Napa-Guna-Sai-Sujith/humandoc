@@ -15,7 +15,6 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
-  User as UserIcon,
 } from "lucide-react";
 
 import { Logo } from "@/components/logo";
@@ -98,34 +97,6 @@ export function AppShell({ user, children }: { user: User; children: React.React
             </Link>
           ) : null}
         </nav>
-
-        {/* Profile Section */}
-        <div className="border-t p-3 bg-muted/30">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-xs uppercase border border-primary/20">
-              {initials}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-semibold leading-tight text-foreground">{user.name || "User"}</p>
-              <p className="truncate text-[10px] text-muted-foreground">{user.email}</p>
-            </div>
-            <Link
-              href="/settings"
-              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-              title="Profile Settings"
-            >
-              <UserIcon className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-          <div className="mt-2 flex items-center justify-between text-[11px]">
-            <span className="capitalize px-1.5 py-0.5 rounded bg-card border text-muted-foreground font-medium text-[10px]">
-              {user.role === "admin" ? "Admin" : `${usage?.tier ?? "free"} Plan`}
-            </span>
-            <Link href="/settings" className="text-primary hover:underline font-medium text-[10px]">
-              Profile Settings &rarr;
-            </Link>
-          </div>
-        </div>
 
         {/* Monthly Pages Usage */}
         <div className="border-t p-3">
