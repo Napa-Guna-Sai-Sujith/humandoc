@@ -30,6 +30,18 @@ def _local_path(key: str) -> Path:
     return p
 
 
+_SYNC_ENGINE = None
+
+
+def _sync_engine():
+    global _SYNC_ENGINE
+    if _SYNC_ENGINE is None:
+        from sqlalchemy import create_engine
+        url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://").replace("ssl=require", "sslmode=require")
+        _SYNC_ENGINE = create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=10)
+    return _SYNC_ENGINE
+
+
 _s3 = boto3.client(
     "s3",
     endpoint_url=settings.s3_endpoint_url,
@@ -158,6 +170,26 @@ def complete_multipart(key: str, upload_id: str, parts: list[dict[str, Any]]) ->
                     out.write(chunk)
                     hasher.update(chunk)
         shutil.rmtree(_PARTS_DIR / upload_id, ignore_errors=True)
+        try:
+            from sqlalchemy import text
+            mime, _ = mimetypes.guess_type(dest_file.name)
+            mime = mime or "application/octet-stream"
+            content = dest_file.read_bytes()
+            eng = _sync_engine()
+            with eng.begin() as conn:
+                conn.execute(
+                    text("""
+                        INSERT INTO stored_files (key, content, content_type, size)
+                        VALUES (:key, :content, :content_type, :size)
+                        ON CONFLICT (key) DO UPDATE
+                        SET content = EXCLUDED.content,
+                            content_type = EXCLUDED.content_type,
+                            size = EXCLUDED.size
+                    """),
+                    {"key": key, "content": content, "content_type": mime, "size": len(content)},
+                )
+        except Exception:
+            pass
         return {"key": key, "etag": f'"{hasher.hexdigest()}"'}
 
     try:
@@ -179,6 +211,26 @@ def complete_multipart(key: str, upload_id: str, parts: list[dict[str, Any]]) ->
                     out.write(chunk)
                     hasher.update(chunk)
         shutil.rmtree(_PARTS_DIR / upload_id, ignore_errors=True)
+        try:
+            from sqlalchemy import text
+            mime, _ = mimetypes.guess_type(dest_file.name)
+            mime = mime or "application/octet-stream"
+            content = dest_file.read_bytes()
+            eng = _sync_engine()
+            with eng.begin() as conn:
+                conn.execute(
+                    text("""
+                        INSERT INTO stored_files (key, content, content_type, size)
+                        VALUES (:key, :content, :content_type, :size)
+                        ON CONFLICT (key) DO UPDATE
+                        SET content = EXCLUDED.content,
+                            content_type = EXCLUDED.content_type,
+                            size = EXCLUDED.size
+                    """),
+                    {"key": key, "content": content, "content_type": mime, "size": len(content)},
+                )
+        except Exception:
+            pass
         return {"key": key, "etag": f'"{hasher.hexdigest()}"'}
 
 
@@ -208,6 +260,23 @@ def put_bytes(key: str, data: bytes, content_type: str = "application/octet-stre
     dest = _local_path(key)
     dest.write_bytes(data)
     try:
+        from sqlalchemy import text
+        eng = _sync_engine()
+        with eng.begin() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO stored_files (key, content, content_type, size)
+                    VALUES (:key, :content, :content_type, :size)
+                    ON CONFLICT (key) DO UPDATE
+                    SET content = EXCLUDED.content,
+                        content_type = EXCLUDED.content_type,
+                        size = EXCLUDED.size
+                """),
+                {"key": key, "content": data, "content_type": content_type, "size": len(data)},
+            )
+    except Exception:
+        pass
+    try:
         _s3.put_object(
             Bucket=settings.s3_bucket,
             Key=key,
@@ -224,6 +293,21 @@ def get_bytes(key: str) -> bytes:
     if dest.exists():
         return dest.read_bytes()
     try:
+        from sqlalchemy import text
+        eng = _sync_engine()
+        with eng.connect() as conn:
+            r = conn.execute(text("SELECT content FROM stored_files WHERE key = :key"), {"key": key}).first()
+            if r and r[0]:
+                data = bytes(r[0])
+                try:
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    dest.write_bytes(data)
+                except Exception:
+                    pass
+                return data
+    except Exception:
+        pass
+    try:
         return _s3.get_object(Bucket=settings.s3_bucket, Key=key)["Body"].read()
     except Exception:
         if dest.exists():
@@ -234,6 +318,13 @@ def get_bytes(key: str) -> bytes:
 def delete(key: str) -> None:
     dest = _local_path(key)
     dest.unlink(missing_ok=True)
+    try:
+        from sqlalchemy import text
+        eng = _sync_engine()
+        with eng.begin() as conn:
+            conn.execute(text("DELETE FROM stored_files WHERE key = :key"), {"key": key})
+    except Exception:
+        pass
     try:
         _s3.delete_object(Bucket=settings.s3_bucket, Key=key)
     except Exception:
@@ -249,6 +340,13 @@ def delete_prefix(prefix: str) -> int:
             if f.is_file():
                 f.unlink(missing_ok=True)
                 count += 1
+    try:
+        from sqlalchemy import text
+        eng = _sync_engine()
+        with eng.begin() as conn:
+            conn.execute(text("DELETE FROM stored_files WHERE key LIKE :prefix || '%'"), {"prefix": prefix})
+    except Exception:
+        pass
     try:
         paginator = _s3.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=settings.s3_bucket, Prefix=prefix):

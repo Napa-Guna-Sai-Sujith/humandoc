@@ -116,21 +116,49 @@ async def put_upload_part(
 
 @part_router.get("/download")
 async def download_file(key: str, download_name: str | None = None) -> Response:
+    import mimetypes
+
     from fastapi.responses import FileResponse
 
-    from app.core.storage import _local_path, get_bytes
+    from app.core.storage import _local_path, _sync_engine, get_bytes
+
     p = _local_path(key)
     if p.exists():
         headers = {}
         if download_name:
             headers["Content-Disposition"] = f'attachment; filename="{download_name}"'
         return FileResponse(p, filename=download_name, headers=headers)
+
+    try:
+        from sqlalchemy import text
+        eng = _sync_engine()
+        with eng.connect() as conn:
+            r = conn.execute(
+                text("SELECT content, content_type FROM stored_files WHERE key = :key"),
+                {"key": key},
+            ).first()
+            if r and r[0]:
+                content = bytes(r[0])
+                media_type = r[1] or mimetypes.guess_type(download_name or key)[0] or "application/octet-stream"
+                try:
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_bytes(content)
+                except Exception:
+                    pass
+                headers = {}
+                if download_name:
+                    headers["Content-Disposition"] = f'attachment; filename="{download_name}"'
+                return Response(content=content, media_type=media_type, headers=headers)
+    except Exception:
+        pass
+
     try:
         content = get_bytes(key)
         headers = {}
         if download_name:
             headers["Content-Disposition"] = f'attachment; filename="{download_name}"'
-        return Response(content=content, media_type="application/octet-stream", headers=headers)
+        mime = mimetypes.guess_type(download_name or key)[0] or "application/octet-stream"
+        return Response(content=content, media_type=mime, headers=headers)
     except Exception:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found") from None
 
