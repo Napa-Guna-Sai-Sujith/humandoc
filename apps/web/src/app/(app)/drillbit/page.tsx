@@ -69,6 +69,21 @@ export default function DrillbitPlagiarismPage() {
   const [activeTab, setActiveTab] = useState<"report" | "sources" | "text">("report");
   const [copied, setCopied] = useState(false);
 
+  const extractPdfClient = async (file: File): Promise<{ text: string; pages: number }> => {
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const arrayBuffer = await file.arrayBuffer();
+    const loadingTask = pdfjs.getDocument({ data: new Uint8Array(arrayBuffer) });
+    const pdf = await loadingTask.promise;
+    let fullText = "";
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const strings = content.items.map((item: any) => item.str || "");
+      fullText += strings.join(" ") + "\n\n";
+    }
+    return { text: fullText.trim(), pages: pdf.numPages };
+  };
+
   // Handle File Upload with 100-Page Limit Validation
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -78,6 +93,79 @@ export default function DrillbitPlagiarismPage() {
     setPageError(null);
     setReport(null);
 
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    const cleanTitle = file.name.replace(/\.[^/.]+$/, "");
+
+    // Fast-path client-side extraction for plain text and markdown
+    if (ext === "txt" || ext === "md") {
+      try {
+        const rawText = (await file.text()).trim();
+        const words = rawText ? rawText.split(/\s+/).length : 0;
+        const pages = Math.max(1, Math.ceil(words / 350));
+        if (pages > 100) {
+          setPageError(`Document exceeds 100-page limit (~${pages} pages found). Maximum allowed is 100 pages.`);
+          toast({
+            title: "Exceeds 100-Page Limit",
+            description: `This document contains ~${pages} pages. Maximum allowed is 100 pages.`,
+            variant: "error",
+          });
+          setFileLoading(false);
+          return;
+        }
+        setText(rawText);
+        setDocTitle(cleanTitle);
+        setUploadedFileName(file.name);
+        setUploadedPages(pages);
+        toast({
+          title: "Document Loaded Successfully",
+          description: `${file.name} · ${pages} page(s) · ${words.toLocaleString()} words`,
+          variant: "success",
+        });
+        setFileLoading(false);
+        e.target.value = "";
+        return;
+      } catch (txtErr) {
+        console.warn("Client text read failed:", txtErr);
+      }
+    }
+
+    // Direct high-performance in-browser extraction for PDF files (handles large files up to 25MB instantly)
+    if (ext === "pdf") {
+      try {
+        const { text: rawText, pages } = await extractPdfClient(file);
+        if (pages > 100) {
+          setPageError(`Document exceeds 100-page limit (${pages} pages found). Maximum allowed is 100 pages.`);
+          toast({
+            title: "Exceeds 100-Page Limit",
+            description: `This document contains ${pages} pages. Maximum allowed is 100 pages.`,
+            variant: "error",
+          });
+          setFileLoading(false);
+          e.target.value = "";
+          return;
+        }
+
+        const words = rawText ? rawText.split(/\s+/).length : 0;
+        setText(rawText);
+        setDocTitle(cleanTitle);
+        setUploadedFileName(file.name);
+        setUploadedPages(pages);
+        setPageError(null);
+
+        toast({
+          title: "Document Loaded Successfully",
+          description: `${file.name} · ${pages} page(s) (within 100-page limit) · ${words.toLocaleString()} words extracted`,
+          variant: "success",
+        });
+        setFileLoading(false);
+        e.target.value = "";
+        return;
+      } catch (pdfClientErr) {
+        console.warn("Client-side PDF extraction failed, falling back to server parser:", pdfClientErr);
+      }
+    }
+
+    // Fallback: server-side extraction
     const formData = new FormData();
     formData.append("file", file);
 
@@ -93,7 +181,7 @@ export default function DrillbitPlagiarismPage() {
         const msg =
           data.detail ||
           (res.status === 413
-            ? "File size exceeds upload limit (maximum 25MB)."
+            ? "File size exceeds serverless upload limit. Please copy and paste the text directly."
             : "Could not process document. Please check the file or paste the text directly.");
         setPageError(msg);
         toast({
@@ -115,7 +203,6 @@ export default function DrillbitPlagiarismPage() {
       }
 
       setText(data.text);
-      const cleanTitle = file.name.replace(/\.[^/.]+$/, "");
       setDocTitle(cleanTitle);
       setUploadedFileName(file.name);
       setUploadedPages(data.pages);
@@ -128,7 +215,7 @@ export default function DrillbitPlagiarismPage() {
     } catch {
       toast({
         title: "Upload Failed",
-        description: "Failed to parse document. Please check connection or try another file.",
+        description: "Failed to parse document. Please check connection or try pasting the text.",
         variant: "error",
       });
     } finally {
@@ -386,7 +473,7 @@ export default function DrillbitPlagiarismPage() {
             <Alert variant="destructive">
               <ShieldAlert className="h-4 w-4" />
               <AlertTitle>
-                {pageError.toLowerCase().includes("100-page") || pageError.toLowerCase().includes("limit")
+                {pageError.includes("100-page") || pageError.includes("100 pages") || pageError.includes("exceeds 100")
                   ? "100-Page Limit Exceeded"
                   : "Upload Error"}
               </AlertTitle>
