@@ -1,8 +1,9 @@
 import "server-only";
+import nodemailer from "nodemailer";
 
 type MailInput = { to: string; subject: string; html: string; text?: string };
 
-const FROM = process.env.EMAIL_FROM || "HumanDoc <no-reply@humandoc.local>";
+const FROM = process.env.EMAIL_FROM || "HumanDoc <napagunasaisujith@gmail.com>";
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] as string);
@@ -27,31 +28,51 @@ function layout(title: string, body: string): string {
 }
 
 /**
- * Email delivery via Resend's REST API.
- * In development without an API key the message is printed to the server log, which keeps
- * local sign-up flows testable without an external provider.
+ * Email delivery via Gmail SMTP (App Password) or Resend REST API.
  */
 export async function sendEmail({ to, subject, html, text }: MailInput): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY;
+  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "napagunasaisujith@gmail.com";
+  const smtpPass = (process.env.SMTP_PASSWORD || process.env.GMAIL_APP_PASSWORD || "").replace(/\s+/g, "");
 
-  if (!apiKey) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("RESEND_API_KEY is not configured");
-    }
-    console.info(`\n[dev email] to=${to} subject=${subject}\n${text ?? html.replace(/<[^>]+>/g, " ")}\n`);
+  if (smtpPass) {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+    });
+    await transporter.sendMail({
+      from: FROM,
+      to,
+      subject,
+      text: text ?? html.replace(/<[^>]+>/g, " "),
+      html,
+    });
     return;
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: FROM, to: [to], subject, html, text: text ?? html.replace(/<[^>]+>/g, " ") }),
-  });
+  const apiKey = process.env.RESEND_API_KEY;
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`Email delivery failed (${response.status}): ${detail.slice(0, 300)}`);
+  if (apiKey) {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: FROM, to: [to], subject, html, text: text ?? html.replace(/<[^>]+>/g, " ") }),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(`Email delivery failed (${response.status}): ${detail.slice(0, 300)}`);
+    }
+    return;
   }
+
+  if (process.env.NODE_ENV === "production") {
+    console.warn(`[email] Neither SMTP nor RESEND_API_KEY is configured. Simulating delivery to: ${to}`);
+    return;
+  }
+  console.info(`\n[dev email] to=${to} subject=${subject}\n${text ?? html.replace(/<[^>]+>/g, " ")}\n`);
 }
 
 function button(url: string, label: string): string {

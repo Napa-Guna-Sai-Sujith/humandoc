@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
-    serverComponentsExternalPackages: ["pg", "bcryptjs", "stripe"],
+    serverComponentsExternalPackages: ["pg", "bcryptjs", "stripe", "nodemailer"],
   },
   async rewrites() {
     const api = process.env.API_INTERNAL_URL || "http://localhost:8000";

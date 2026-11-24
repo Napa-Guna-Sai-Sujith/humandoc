@@ -17,6 +17,7 @@ coverage
 tmp_*
 *.tmp
 *.log
+*.tsbuildinfo
 apps/api/tests/fixtures/*.pdf
 apps/api/tests/fixtures/*.docx
 apps/api/tests/fixtures/*.pptx

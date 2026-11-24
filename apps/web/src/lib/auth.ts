@@ -274,3 +274,52 @@ export function timingSafeStringEqual(a: string, b: string): boolean {
   if (bufferA.length !== bufferB.length) return false;
   return crypto.timingSafeEqual(bufferA, bufferB);
 }
+
+export async function findOrCreateGoogleUser(input: {
+  email: string;
+  name?: string;
+  googleId: string;
+}): Promise<{ userId: string; role: string; emailVerified: boolean }> {
+  const email = input.email.trim().toLowerCase();
+  const existing = await one<{
+    id: string;
+    role: string;
+    email_verified_at: Date | null;
+  }>(
+    "SELECT id, role, email_verified_at FROM users WHERE lower(email) = $1",
+    [email]
+  );
+
+  if (existing) {
+    if (!existing.email_verified_at) {
+      await query("UPDATE users SET email_verified_at = now() WHERE id = $1", [existing.id]);
+    }
+    return {
+      userId: existing.id,
+      role: existing.role,
+      emailVerified: true,
+    };
+  }
+
+  return await withTransaction(async (client) => {
+    const res = await client.query<{ id: string; role: string }>(
+      `INSERT INTO users (email, name, email_verified_at, role, created_at, updated_at)
+       VALUES ($1, $2, now(), 'user', now(), now())
+       RETURNING id, role`,
+      [email, input.name || email.split("@")[0]]
+    );
+    const user = res.rows[0];
+
+    await client.query(
+      `INSERT INTO subscriptions (user_id, tier, status, pages_per_month, created_at, updated_at)
+       VALUES ($1, 'free', 'active', 20, now(), now())`,
+      [user.id]
+    );
+
+    return {
+      userId: user.id,
+      role: user.role,
+      emailVerified: true,
+    };
+  });
+}
