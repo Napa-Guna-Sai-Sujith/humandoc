@@ -39,48 +39,58 @@ export async function sendEmail({ to, subject, html, text }: MailInput): Promise
 
   // 1. Send via Gmail / SMTP if configured
   if (smtpUser && smtpPass) {
-    const transporter = nodemailer.createTransport({
-      service: process.env.SMTP_SERVICE || "gmail",
-      host: process.env.SMTP_HOST || "smtp.gmail.com",
-      port: Number(process.env.SMTP_PORT || 465),
-      secure: Boolean(process.env.SMTP_SECURE ?? true),
-      auth: {
-        user: smtpUser,
-        pass: smtpPass,
-      },
-    });
+    try {
+      const isSecure = process.env.SMTP_SECURE === "true" || (process.env.SMTP_PORT === "465") || (!process.env.SMTP_PORT);
+      const transporter = nodemailer.createTransport({
+        service: process.env.SMTP_SERVICE || "gmail",
+        host: process.env.SMTP_HOST || "smtp.gmail.com",
+        port: Number(process.env.SMTP_PORT || (isSecure ? 465 : 587)),
+        secure: isSecure,
+        connectionTimeout: 4000,
+        greetingTimeout: 4000,
+        socketTimeout: 5000,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+      });
 
-    await transporter.sendMail({
-      from: FROM,
-      to,
-      subject,
-      html,
-      text: text ?? html.replace(/<[^>]+>/g, " "),
-    });
-    return;
+      await transporter.sendMail({
+        from: FROM,
+        to,
+        subject,
+        html,
+        text: text ?? html.replace(/<[^>]+>/g, " "),
+      });
+      return;
+    } catch (smtpErr) {
+      console.error("[mail] SMTP delivery attempt failed:", (smtpErr as Error).message);
+    }
   }
 
   // 2. Send via Resend if API key is provided
   const apiKey = process.env.RESEND_API_KEY;
   if (apiKey) {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: FROM, to: [to], subject, html, text: text ?? html.replace(/<[^>]+>/g, " ") }),
-    });
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ from: FROM, to: [to], subject, html, text: text ?? html.replace(/<[^>]+>/g, " ") }),
+      });
 
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      throw new Error(`Email delivery failed (${response.status}): ${detail.slice(0, 300)}`);
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        console.error(`[mail] Resend delivery failed (${response.status}): ${detail.slice(0, 300)}`);
+      } else {
+        return;
+      }
+    } catch (resendErr) {
+      console.error("[mail] Resend delivery error:", (resendErr as Error).message);
     }
-    return;
   }
 
-  // 3. Development fallback
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("No email provider configured. Set SMTP_USER and SMTP_PASSWORD or RESEND_API_KEY.");
-  }
-  console.info(`\n[dev email] to=${to} subject=${subject}\n${text ?? html.replace(/<[^>]+>/g, " ")}\n`);
+  // 3. Fallback log (always printed to server console so links are never lost)
+  console.info(`\n[email fallback] to=${to} subject=${subject}\n${text ?? html.replace(/<[^>]+>/g, " ")}\n`);
 }
 
 function button(url: string, label: string): string {

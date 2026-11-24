@@ -5,7 +5,9 @@ const nextConfig = {
     serverComponentsExternalPackages: ["pg", "bcryptjs", "stripe"],
   },
   async rewrites() {
-    const api = process.env.API_INTERNAL_URL || "http://localhost:8000";
+    const api =
+      process.env.API_INTERNAL_URL ||
+      (process.env.NODE_ENV === "production" ? "https://api-production-76c58ed0.up.railway.app" : "http://localhost:8000");
     const s3 = process.env.S3_INTERNAL_URL || "http://localhost:9000";
     return [
       { source: "/backend/:path*", destination: `${api}/:path*` },
