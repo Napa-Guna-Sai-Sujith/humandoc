@@ -134,13 +134,13 @@ export default function DrillbitPlagiarismPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight">Drillbit Plagiarism &amp; AI Analysis</h1>
+            <h1 className="text-2xl font-bold tracking-tight">HD Plagiarism &amp; AI Analysis</h1>
             <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
-              Drillbit 2026 Engine
+              HD Plagiarism Engine
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Check similarity against academic journals, research repositories, and internet sources modeled after{" "}
+            Check similarity against academic journals, research repositories, and internet sources calibrated with{" "}
             <a
               href="https://www.drillbitplagiarismcheck.com"
               target="_blank"
@@ -149,7 +149,7 @@ export default function DrillbitPlagiarismPage() {
             >
               drillbitplagiarismcheck.com <ExternalLink className="h-3 w-3" />
             </a>
-            . If plagiarism or AI is flagged, auto-humanize to guarantee under 10% similarity.
+            . For any queries contact <a href="mailto:napagunasaisujith@gmail.com" className="text-primary underline font-medium">napagunasaisujith@gmail.com</a>.
           </p>
         </div>
 
@@ -252,7 +252,7 @@ export default function DrillbitPlagiarismPage() {
           <div className="flex items-center gap-2">
             <Button onClick={handleRunCheck} disabled={analyzing || !text.trim()} className="gap-2">
               {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-              {analyzing ? "Analyzing with Drillbit..." : "Run Drillbit Plagiarism Check"}
+              {analyzing ? "Analyzing with HD Plagiarism..." : "Run HD Plagiarism Check"}
             </Button>
           </div>
         </CardFooter>
@@ -287,7 +287,7 @@ export default function DrillbitPlagiarismPage() {
                     ) : (
                       <>
                         <Sparkles className="h-4 w-4" />
-                        Convert &amp; Humanize for Drillbit (Bypass Matches &lt;5%)
+                        Convert &amp; Humanize with HD Plagiarism (Bypass Matches &lt;5%)
                       </>
                     )}
                   </Button>
@@ -299,13 +299,13 @@ export default function DrillbitPlagiarismPage() {
               <CheckCircle2 className="h-5 w-5 text-emerald-600" />
               <div className="flex-1">
                 <AlertTitle className="text-base font-bold flex items-center justify-between">
-                  <span>Drillbit Certified Safe ({report.similarityScore}% Similarity · {report.aiScore}% AI)</span>
+                  <span>HD Plagiarism Certified Safe ({report.similarityScore}% Similarity · {report.aiScore}% AI)</span>
                   <Badge variant="success" className="text-xs bg-emerald-600 text-white">
                     UGC &amp; University Compliant
                   </Badge>
                 </AlertTitle>
                 <AlertDescription className="mt-1 text-sm">
-                  Your paper satisfies Drillbit&apos;s Satisfactory Grade criteria (under 10% similarity) and has zero detectable AI patterns.
+                  Your paper satisfies HD Plagiarism Satisfactory Grade criteria (under 10% similarity) and has zero detectable AI patterns.
                   Safe for final thesis, journal, or institutional submission.
                 </AlertDescription>
               </div>
@@ -319,7 +319,7 @@ export default function DrillbitPlagiarismPage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                      Official Drillbit Similarity Report
+                      Official HD Plagiarism Similarity Report
                     </span>
                     <Badge variant="outline" className="font-mono text-xs">
                       {report.submissionId}
@@ -560,7 +560,7 @@ export default function DrillbitPlagiarismPage() {
 
             <CardFooter className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/10 pt-4">
               <span className="text-xs text-muted-foreground">
-                Drillbit Plagiarism Check algorithm calibrated with UGC ShodhShuddhi guidelines.
+                HD Plagiarism Check algorithm · For queries: napagunasaisujith@gmail.com · &copy; 2026 HumanDoc HD
               </span>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={handleCopyText}>

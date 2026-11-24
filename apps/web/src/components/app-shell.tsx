@@ -5,25 +5,29 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   BarChart3,
+  Copyright,
   CreditCard,
   FileText,
   History,
   LayoutDashboard,
   LogOut,
+  Mail,
   Settings,
   ShieldCheck,
   Sparkles,
+  User as UserIcon,
 } from "lucide-react";
 
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { cn, timeAgo } from "@/lib/utils";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/jobs/new", label: "New job", icon: Sparkles },
-  { href: "/drillbit", label: "Drillbit Plagiarism", icon: ShieldCheck },
+  { href: "/drillbit", label: "HD Plagiarism", icon: ShieldCheck },
   { href: "/history", label: "History", icon: History },
   { href: "/pricing", label: "Pricing & usage", icon: BarChart3 },
   { href: "/invoices", label: "Invoices", icon: CreditCard },
@@ -37,6 +41,7 @@ export function AppShell({ user, children }: { user: User; children: React.React
   const router = useRouter();
   const [usage, setUsage] = useState<{ pagesUsed: number; pagesPerMonth: number; pagesRemaining: number; tier: string } | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [copyrightOpen, setCopyrightOpen] = useState(false);
 
   useEffect(() => {
     api
@@ -52,6 +57,7 @@ export function AppShell({ user, children }: { user: User; children: React.React
   };
 
   const pct = usage ? Math.min(100, (usage.pagesUsed / Math.max(1, usage.pagesPerMonth)) * 100) : 0;
+  const initials = (user.name || user.email || "U").slice(0, 2).toUpperCase();
 
   return (
     <div className="flex min-h-screen bg-muted/30">
@@ -93,19 +99,77 @@ export function AppShell({ user, children }: { user: User; children: React.React
           ) : null}
         </nav>
 
-        <div className="border-t p-4">
-          <div className="mb-3 flex items-center justify-between text-xs">
-            <span className="font-medium text-muted-foreground">Monthly pages</span>
-            <span className="font-medium">
+        {/* Profile Section */}
+        <div className="border-t p-3 bg-muted/30">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-xs uppercase border border-primary/20">
+              {initials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold leading-tight text-foreground">{user.name || "User"}</p>
+              <p className="truncate text-[10px] text-muted-foreground">{user.email}</p>
+            </div>
+            <Link
+              href="/settings"
+              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              title="Profile Settings"
+            >
+              <UserIcon className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+          <div className="mt-2 flex items-center justify-between text-[11px]">
+            <span className="capitalize px-1.5 py-0.5 rounded bg-card border text-muted-foreground font-medium text-[10px]">
+              {user.role === "admin" ? "Admin" : `${usage?.tier ?? "free"} Plan`}
+            </span>
+            <Link href="/settings" className="text-primary hover:underline font-medium text-[10px]">
+              Profile Settings &rarr;
+            </Link>
+          </div>
+        </div>
+
+        {/* Monthly Pages Usage */}
+        <div className="border-t p-3">
+          <div className="mb-2 flex items-center justify-between text-xs">
+            <span className="font-medium text-muted-foreground text-[11px]">Monthly pages</span>
+            <span className="font-medium text-[11px]">
               {usage ? `${usage.pagesUsed}/${usage.pagesPerMonth}` : "—"}
             </span>
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
             <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
           </div>
-          <p className="mt-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+          <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
             {usage?.tier ?? "free"} plan
           </p>
+        </div>
+
+        {/* Queries & Support Contact */}
+        <div className="border-t p-3 bg-primary/5 text-xs">
+          <div className="flex items-start gap-2">
+            <Mail className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="font-semibold text-foreground text-[11px]">For any queries contact:</p>
+              <a
+                href="mailto:napagunasaisujith@gmail.com"
+                className="block truncate text-[11px] text-primary hover:underline font-medium"
+                title="Send email to support"
+              >
+                napagunasaisujith@gmail.com
+              </a>
+            </div>
+          </div>
+        </div>
+
+        {/* Copyright Button */}
+        <div className="border-t p-2 text-center bg-card">
+          <button
+            type="button"
+            onClick={() => setCopyrightOpen(true)}
+            className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors font-medium cursor-pointer"
+          >
+            <Copyright className="h-3 w-3" />
+            <span>&copy; 2026 HD Plagiarism · Copyright</span>
+          </button>
         </div>
       </aside>
 
@@ -127,11 +191,16 @@ export function AppShell({ user, children }: { user: User; children: React.React
               {usage ? `${usage.pagesRemaining} pages left` : ""}
             </span>
             <div className="h-6 w-px bg-border" />
-            <div className="text-right">
-              <p className="text-sm font-medium leading-tight">{user.name}</p>
-              <p className="text-[11px] text-muted-foreground">{user.email}</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={signOut} className="gap-1.5">
+            <Link href="/settings" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-xs uppercase border border-primary/20">
+                {initials}
+              </div>
+              <div className="text-right hidden sm:block">
+                <p className="text-xs font-medium leading-tight">{user.name || "User"}</p>
+                <p className="text-[10px] text-muted-foreground">{user.email}</p>
+              </div>
+            </Link>
+            <Button variant="ghost" size="sm" onClick={signOut} className="gap-1.5 ml-1">
               <LogOut className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Sign out</span>
             </Button>
@@ -154,6 +223,19 @@ export function AppShell({ user, children }: { user: User; children: React.React
                 </Link>
               );
             })}
+            <div className="mt-2 pt-2 border-t text-xs px-2 text-muted-foreground space-y-1">
+              <p className="font-semibold text-foreground text-[11px]">For queries: napagunasaisujith@gmail.com</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileOpen(false);
+                  setCopyrightOpen(true);
+                }}
+                className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+              >
+                <Copyright className="h-3 w-3" /> Copyright Notice
+              </button>
+            </div>
           </nav>
         ) : null}
 
@@ -161,17 +243,75 @@ export function AppShell({ user, children }: { user: User; children: React.React
           <div className="mx-auto w-full max-w-6xl">{children}</div>
         </main>
 
-        <footer className="border-t bg-card px-8 py-4 text-xs text-muted-foreground">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2">
-            <span>Files are deleted automatically. We never train on your documents.</span>
-            <span className="flex items-center gap-4">
+        <footer className="border-t bg-card px-6 py-4 text-xs text-muted-foreground">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCopyrightOpen(true)}
+                className="flex items-center gap-1 font-semibold text-foreground hover:text-primary transition-colors cursor-pointer"
+              >
+                <Copyright className="h-3.5 w-3.5" /> 2026 HumanDoc HD Plagiarism. All rights reserved.
+              </button>
+              <span className="hidden sm:inline text-muted-foreground/40">|</span>
+              <span className="text-muted-foreground">Files deleted automatically. Zero AI training.</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <a
+                href="mailto:napagunasaisujith@gmail.com"
+                className="hover:text-foreground font-semibold text-primary inline-flex items-center gap-1"
+              >
+                <Mail className="h-3 w-3" /> Queries: napagunasaisujith@gmail.com
+              </a>
               <Link href="/legal/privacy" className="hover:text-foreground">Privacy</Link>
               <Link href="/legal/terms" className="hover:text-foreground">Terms</Link>
               <Link href="/responsible-use" className="hover:text-foreground">Responsible use</Link>
-            </span>
+            </div>
           </div>
         </footer>
       </div>
+
+      {/* Copyright Notice Dialog */}
+      <Dialog
+        open={copyrightOpen}
+        onClose={() => setCopyrightOpen(false)}
+        title="Copyright & Intellectual Property Notice"
+        description="Legal and ownership disclosure for HumanDoc HD Plagiarism."
+      >
+        <div className="space-y-3 text-xs leading-relaxed text-muted-foreground">
+          <div className="rounded-lg bg-muted/60 p-3 border text-foreground space-y-1">
+            <p className="font-semibold text-sm">&copy; 2026 HumanDoc (HD Plagiarism). All rights reserved.</p>
+            <p className="text-xs text-muted-foreground">
+              HD Plagiarism Detection, Similarity Calibration, and Deep Humanization Engine are proprietary technologies of HumanDoc.
+            </p>
+          </div>
+
+          <p>
+            All submitted content, research documents, and generated rewrite outputs remain the exclusive intellectual property of the respective authors. HumanDoc does not store, retain, publish, or train machine learning models on any customer documents.
+          </p>
+
+          <div className="rounded-lg border bg-card p-3 space-y-1.5">
+            <p className="font-semibold text-foreground text-xs flex items-center gap-1.5">
+              <Mail className="h-3.5 w-3.5 text-primary" /> Questions, Licensing or Academic Queries
+            </p>
+            <p className="text-[11px]">
+              For any queries, enterprise partnerships, or support, please contact our team directly:
+            </p>
+            <a
+              href="mailto:napagunasaisujith@gmail.com"
+              className="text-primary font-bold text-xs hover:underline block"
+            >
+              napagunasaisujith@gmail.com
+            </a>
+          </div>
+
+          <div className="pt-2 flex justify-end">
+            <Button size="sm" onClick={() => setCopyrightOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }

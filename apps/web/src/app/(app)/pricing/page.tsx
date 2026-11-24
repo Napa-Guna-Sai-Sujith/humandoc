@@ -39,7 +39,7 @@ const TIERS: Tier[] = [
     features: [
       "20 pages a month",
       "PDF, DOCX, PPTX, Markdown",
-      "Drillbit similarity & AI preview",
+      "HD Plagiarism similarity & AI preview",
       "Block locking & QA report",
       "7-day auto-delete",
     ],
@@ -52,8 +52,8 @@ const TIERS: Tier[] = [
     blurb: "For a thesis chapter or a weekly report.",
     features: [
       "100 pages a month",
-      "Drillbit Plagiarism Check engine",
-      "Auto-humanize to <10% Drillbit Safe",
+      "HD Plagiarism Check engine",
+      "Auto-humanize to <10% HD Safe",
       "Priority queue & preview",
       "Email support",
     ],
@@ -66,7 +66,7 @@ const TIERS: Tier[] = [
     blurb: "For teams that rewrite every week.",
     features: [
       "500 pages a month",
-      "Drillbit Extreme AI & Similarity",
+      "HD Plagiarism Extreme AI & Similarity",
       "0% AI & <5% Plagiarism Guarantee",
       "UGC & University Compliance Report",
       "Bulk page ranges & glossary",
@@ -80,7 +80,7 @@ const TIERS: Tier[] = [
     blurb: "For agencies and research groups.",
     features: [
       "2,000 pages a month",
-      "Unlimited Drillbit deep scans",
+      "Unlimited HD Plagiarism deep scans",
       "Dedicated journal database pool",
       "Highest priority & SLA",
       "Custom retention window",
