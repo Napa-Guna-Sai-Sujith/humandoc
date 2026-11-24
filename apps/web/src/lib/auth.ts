@@ -22,7 +22,9 @@ export class AuthError extends Error {
   }
 }
 
-const APP_URL = process.env.APP_URL || "http://localhost:3000";
+const APP_URL =
+  process.env.APP_URL ||
+  (process.env.NODE_ENV === "production" ? "https://humandoc.vercel.app" : "http://localhost:3000");
 const MAX_FAILURES = Number(process.env.LOGIN_MAX_FAILURES || 5);
 const LOCKOUT_MIN = Number(process.env.LOGIN_LOCKOUT_MIN || 15);
 const VERIFY_TTL_MIN = Number(process.env.VERIFY_TOKEN_TTL_MIN || 60);

@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     app_name: str = "HumanDoc"
     app_url: str = "http://localhost:3000"
     api_public_url: str = "http://localhost:8000"
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = "https://humandoc.vercel.app,http://localhost:3000"
     environment: str = "development"
 
     database_url: str = (
