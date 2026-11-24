@@ -1,15 +1,17 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
   BookOpen,
   CheckCircle2,
   Copy,
+  Download,
   ExternalLink,
   FileCheck,
   FileText,
+  FileUp,
   Filter,
   Globe,
   GraduationCap,
@@ -20,6 +22,8 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Upload,
+  X,
   Zap,
 } from "lucide-react";
 
@@ -41,22 +45,105 @@ Additionally, extensive empirical research demonstrates that pre-trained languag
 
 export default function DrillbitPlagiarismPage() {
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [inputMode, setInputMode] = useState<"upload" | "paste">("upload");
   const [docTitle, setDocTitle] = useState("Academic Thesis Chapter 1");
   const [text, setText] = useState(SAMPLE_ACADEMIC_TEXT);
+
+  // File Upload State
+  const [fileLoading, setFileLoading] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [uploadedPages, setUploadedPages] = useState<number | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
+
+  // Filters
   const [excludeQuotes, setExcludeQuotes] = useState(true);
   const [excludeBibliography, setExcludeBibliography] = useState(true);
   const [excludeSmallMatches, setExcludeSmallMatches] = useState(true);
 
+  // Analysis & Humanization State
   const [analyzing, setAnalyzing] = useState(false);
   const [humanizing, setHumanizing] = useState(false);
   const [report, setReport] = useState<DrillbitReport | null>(null);
   const [activeTab, setActiveTab] = useState<"report" | "sources" | "text">("report");
   const [copied, setCopied] = useState(false);
 
-  // Run Drillbit Check
+  // Handle File Upload with 30-Page Limit Validation
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFileLoading(true);
+    setPageError(null);
+    setReport(null);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("/api/drillbit/extract", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setPageError(data.detail || "Could not process document.");
+        toast({
+          title: "Upload Blocked",
+          description: data.detail || "File exceeds limit or is unreadable.",
+          variant: "error",
+        });
+        return;
+      }
+
+      if (data.pages > 30) {
+        setPageError(`Document exceeds 30-page limit (${data.pages} pages found). Maximum allowed is 30 pages.`);
+        toast({
+          title: "Exceeds 30-Page Limit",
+          description: `This document contains ${data.pages} pages. Maximum allowed is 30 pages.`,
+          variant: "error",
+        });
+        return;
+      }
+
+      setText(data.text);
+      const cleanTitle = file.name.replace(/\.[^/.]+$/, "");
+      setDocTitle(cleanTitle);
+      setUploadedFileName(file.name);
+      setUploadedPages(data.pages);
+
+      toast({
+        title: "Document Loaded Successfully",
+        description: `${file.name} · ${data.pages} page(s) (within 30-page limit) · ${data.wordCount.toLocaleString()} words`,
+        variant: "success",
+      });
+    } catch {
+      toast({
+        title: "Upload Failed",
+        description: "Failed to parse document. Please check connection or try another file.",
+        variant: "error",
+      });
+    } finally {
+      setFileLoading(false);
+      e.target.value = "";
+    }
+  };
+
+  const clearUploadedFile = () => {
+    setUploadedFileName(null);
+    setUploadedPages(null);
+    setPageError(null);
+    setText("");
+    setReport(null);
+  };
+
+  // Run HD Plagiarism Check
   const handleRunCheck = async () => {
     if (!text.trim()) {
-      toast({ title: "Text required", description: "Please enter or paste your document text.", variant: "error" });
+      toast({ title: "Text required", description: "Please upload a document or enter text.", variant: "error" });
       return;
     }
 
@@ -69,7 +156,7 @@ export default function DrillbitPlagiarismPage() {
       });
       setReport(res.report);
       toast({
-        title: "Drillbit Analysis Complete",
+        title: "HD Plagiarism Check Complete",
         description: `Similarity Score: ${res.report.similarityScore}% · AI Content: ${res.report.aiScore}%`,
         variant: res.report.similarityScore <= 10 ? "success" : "default",
       });
@@ -84,7 +171,7 @@ export default function DrillbitPlagiarismPage() {
     }
   };
 
-  // Convert & Humanize with HumanDoc Engine
+  // Convert & Humanize with HD Plagiarism Engine
   const handleHumanize = async () => {
     if (!text.trim()) return;
 
@@ -125,22 +212,43 @@ export default function DrillbitPlagiarismPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleDownloadText = () => {
+    const element = document.createElement("a");
+    const file = new Blob([text], { type: "text/plain;charset=utf-8" });
+    element.href = URL.createObjectURL(file);
+    element.download = `${docTitle.replace(/[^a-zA-Z0-9_-]/g, "_")}_HD_Humanized.txt`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+    toast({ title: "Downloaded", description: "Humanized document saved to your device." });
+  };
+
   const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const computedPages = uploadedPages ?? Math.max(1, Math.ceil(wordCount / 350));
   const isSafe = report ? report.similarityScore <= 10 : false;
 
   return (
     <div className="space-y-6 pb-12">
+      {/* Hidden File Input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        accept=".pdf,.docx,.doc,.txt,.md"
+        className="hidden"
+      />
+
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight">HD Plagiarism &amp; AI Analysis</h1>
             <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
-              HD Plagiarism Engine
+              HD Plagiarism Engine · Max 30 Pages
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Check similarity against academic journals, research repositories, and internet sources calibrated with{" "}
+            Check complete PDF, DOCX, DOC, and text documents against academic journals, research repositories, and web sources calibrated with{" "}
             <a
               href="https://www.drillbitplagiarismcheck.com"
               target="_blank"
@@ -149,7 +257,11 @@ export default function DrillbitPlagiarismPage() {
             >
               drillbitplagiarismcheck.com <ExternalLink className="h-3 w-3" />
             </a>
-            . For any queries contact <a href="mailto:napagunasaisujith@gmail.com" className="text-primary underline font-medium">napagunasaisujith@gmail.com</a>.
+            . For queries contact{" "}
+            <a href="mailto:napagunasaisujith@gmail.com" className="text-primary underline font-medium">
+              napagunasaisujith@gmail.com
+            </a>
+            .
           </p>
         </div>
 
@@ -160,6 +272,9 @@ export default function DrillbitPlagiarismPage() {
             onClick={() => {
               setText(SAMPLE_ACADEMIC_TEXT);
               setDocTitle("Research Paper Sample (With AI / Plagiarism)");
+              setUploadedFileName(null);
+              setUploadedPages(1);
+              setPageError(null);
               setReport(null);
             }}
           >
@@ -168,19 +283,123 @@ export default function DrillbitPlagiarismPage() {
         </div>
       </div>
 
-      {/* Input Form & Filters */}
+      {/* Main Document Input Card */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle className="text-base font-semibold">Document Details &amp; Text Input</CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-base font-semibold">Document Input</CardTitle>
+              <div className="flex rounded-lg border bg-muted p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setInputMode("upload")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md font-medium transition-colors",
+                    inputMode === "upload" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Upload File (PDF / DOCX)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInputMode("paste")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md font-medium transition-colors",
+                    inputMode === "paste" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Paste Text
+                </button>
+              </div>
+            </div>
+
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>{wordCount.toLocaleString()} words</span>
+              <span className="font-medium text-foreground">{wordCount.toLocaleString()} words</span>
               <span>·</span>
-              <span>{Math.max(1, Math.ceil(wordCount / 350))} page(s)</span>
+              <span className={cn("font-medium", computedPages > 30 ? "text-destructive font-bold" : "text-foreground")}>
+                {computedPages} / 30 page(s)
+              </span>
             </div>
           </div>
         </CardHeader>
+
         <CardContent className="space-y-4">
+          {/* 30-Page Limit Alert if exceeded */}
+          {pageError ? (
+            <Alert variant="destructive">
+              <ShieldAlert className="h-4 w-4" />
+              <AlertTitle>30-Page Limit Exceeded</AlertTitle>
+              <AlertDescription className="text-xs">{pageError}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          {/* Mode 1: File Upload Box */}
+          {inputMode === "upload" ? (
+            <div className="space-y-3">
+              {uploadedFileName ? (
+                <div className="flex items-center justify-between p-3.5 rounded-xl border bg-primary/5 text-xs">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold">
+                      <FileCheck className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-foreground text-sm">{uploadedFileName}</p>
+                      <p className="text-muted-foreground">
+                        {uploadedPages} page(s) (under 30-page max) · {wordCount.toLocaleString()} words extracted
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={fileLoading}
+                    >
+                      Replace File
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={clearUploadedFile}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className={cn(
+                    "border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/30",
+                    fileLoading && "opacity-50 pointer-events-none",
+                  )}
+                >
+                  {fileLoading ? (
+                    <div className="space-y-2">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+                      <p className="text-sm font-medium">Extracting document pages and counting words...</p>
+                      <p className="text-xs text-muted-foreground">Verifying 30-page maximum limit...</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto mb-2">
+                        <FileUp className="h-6 w-6" />
+                      </div>
+                      <p className="text-sm font-semibold text-foreground">
+                        Click to upload your Document (.PDF, .DOCX, .DOC, .TXT, .MD)
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Maximum limit: <strong className="text-foreground">30 pages</strong> per check. Fully extracts text and structure.
+                      </p>
+                      <div className="pt-2">
+                        <span className="inline-block text-[11px] bg-muted px-3 py-1 rounded-full text-muted-foreground border">
+                          Supports Research Theses, Chapters, Dissertations &amp; Assignments
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : null}
+
           <div className="space-y-1.5">
             <Label htmlFor="doc-title">Document Title / Paper Name</Label>
             <Input
@@ -193,7 +412,7 @@ export default function DrillbitPlagiarismPage() {
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <Label htmlFor="doc-text">Document Content</Label>
+              <Label htmlFor="doc-text">Document Content Preview</Label>
               {copied ? (
                 <span className="text-xs text-emerald-600 flex items-center gap-1 font-medium">
                   <CheckCircle2 className="h-3.5 w-3.5" /> Copied!
@@ -202,18 +421,18 @@ export default function DrillbitPlagiarismPage() {
             </div>
             <Textarea
               id="doc-text"
-              rows={8}
+              rows={inputMode === "upload" && uploadedFileName ? 5 : 8}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Paste your thesis, research paper, essay, or academic article here to check Drillbit similarity..."
+              placeholder="Document text appears here..."
               className="font-mono text-xs leading-relaxed"
             />
           </div>
 
-          {/* Drillbit Exclusion Filters */}
+          {/* HD Plagiarism Exclusion Filters */}
           <div className="flex flex-wrap items-center gap-4 rounded-lg bg-muted/50 p-3 border text-xs">
             <span className="font-semibold text-muted-foreground flex items-center gap-1">
-              <Filter className="h-3.5 w-3.5 text-primary" /> Drillbit Filters:
+              <Filter className="h-3.5 w-3.5 text-primary" /> HD Plagiarism Filters:
             </span>
             <label className="flex items-center gap-1.5 cursor-pointer">
               <input
@@ -244,13 +463,23 @@ export default function DrillbitPlagiarismPage() {
             </label>
           </div>
         </CardContent>
+
         <CardFooter className="flex flex-wrap justify-between gap-3 border-t bg-muted/10 pt-4">
-          <Button variant="ghost" size="sm" onClick={handleCopyText} disabled={!text}>
-            <Copy className="h-4 w-4 mr-1.5" /> Copy Text
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={handleCopyText} disabled={!text}>
+              <Copy className="h-4 w-4 mr-1.5" /> Copy Text
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleDownloadText} disabled={!text}>
+              <Download className="h-4 w-4 mr-1.5" /> Download (.txt)
+            </Button>
+          </div>
 
           <div className="flex items-center gap-2">
-            <Button onClick={handleRunCheck} disabled={analyzing || !text.trim()} className="gap-2">
+            <Button
+              onClick={handleRunCheck}
+              disabled={analyzing || fileLoading || !text.trim() || computedPages > 30}
+              className="gap-2"
+            >
               {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               {analyzing ? "Analyzing with HD Plagiarism..." : "Run HD Plagiarism Check"}
             </Button>
@@ -258,7 +487,7 @@ export default function DrillbitPlagiarismPage() {
         </CardFooter>
       </Card>
 
-      {/* Drillbit Report Section */}
+      {/* HD Plagiarism Report Section */}
       {report ? (
         <div className="space-y-6 animate-fade-up">
           {/* Action Callout if similarity or AI is high */}
@@ -270,10 +499,10 @@ export default function DrillbitPlagiarismPage() {
                   <span>Plagiarism / AI Flagged ({report.similarityScore}% Similarity · {report.aiScore}% AI)</span>
                 </AlertTitle>
                 <AlertDescription className="mt-1 text-sm">
-                  This document exceeds the standard university/UGC 10% similarity allowance or has high AI markers.
-                  Click below to convert and humanize your text with HumanDoc&apos;s deep engine to clear all Drillbit matches.
+                  This document exceeds the standard university/UGC 10% similarity allowance or contains AI patterns.
+                  Click below to convert and humanize your text with HumanDoc&apos;s deep engine to clear all plagiarism matches.
                 </AlertDescription>
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <Button
                     onClick={handleHumanize}
                     disabled={humanizing}
@@ -327,7 +556,7 @@ export default function DrillbitPlagiarismPage() {
                   </div>
                   <h2 className="text-xl font-bold mt-1">{report.title}</h2>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Analyzed on {new Date(report.analyzedAt).toLocaleString()} · {report.wordCount.toLocaleString()} words · {report.pageCount} page(s)
+                    Analyzed on {new Date(report.analyzedAt).toLocaleString()} · {report.wordCount.toLocaleString()} words · {computedPages} page(s) (Limit: 30)
                   </p>
                 </div>
 
@@ -378,7 +607,7 @@ export default function DrillbitPlagiarismPage() {
                 {/* 2. AI Detection */}
                 <div className="rounded-xl border bg-card p-4 text-center flex flex-col justify-center items-center shadow-sm">
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Drillbit Extreme AI
+                    HD Extreme AI Detection
                   </span>
                   <div
                     className={cn(
@@ -565,6 +794,9 @@ export default function DrillbitPlagiarismPage() {
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={handleCopyText}>
                   <Copy className="h-4 w-4 mr-1.5" /> Copy Clean Text
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleDownloadText}>
+                  <Download className="h-4 w-4 mr-1.5" /> Download (.txt)
                 </Button>
                 {!isSafe ? (
                   <Button size="sm" onClick={handleHumanize} disabled={humanizing} className="bg-emerald-600 hover:bg-emerald-700 text-white">

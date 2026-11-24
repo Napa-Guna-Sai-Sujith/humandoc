@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.core.db import Base, engine
 from app.core.redis import close_redis
-from app.routers import account, admin, health, jobs, uploads
+from app.routers import account, admin, drillbit, health, jobs, uploads
 
 
 @asynccontextmanager
@@ -64,6 +64,7 @@ app.include_router(uploads.router)
 app.include_router(jobs.router)
 app.include_router(account.router)
 app.include_router(admin.router)
+app.include_router(drillbit.router)
 
 
 @app.get("/config")
