@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-import { AuthError, checkIpThrottle, loginUser, registerUser } from "@/lib/auth";
+import { AuthError, checkIpThrottle, loginUser, registerUser, sendVerification } from "@/lib/auth";
 import { clientIp, error, json, readJson, requireCsrf } from "@/lib/http";
 import { createSession } from "@/lib/session";
 import { validateRegistration } from "@/lib/validate";
@@ -28,6 +28,9 @@ export async function POST(request: NextRequest) {
     const email = String(body.email).trim().toLowerCase();
     let userId: string;
     let role: "user" | "admin" = "user";
+    let isNewUser = false;
+    let verifyToken = "";
+
     try {
       const created = await registerUser({
         name: String(body.name),
@@ -36,6 +39,8 @@ export async function POST(request: NextRequest) {
       });
       userId = created.userId;
       role = created.role;
+      verifyToken = created.token;
+      isNewUser = true;
     } catch (regErr) {
       if (regErr instanceof AuthError && regErr.status === 409) {
         try {
@@ -49,11 +54,22 @@ export async function POST(request: NextRequest) {
         throw regErr;
       }
     }
+
+    if (isNewUser && verifyToken) {
+      try {
+        await sendVerification(userId, email, verifyToken);
+      } catch (mailErr) {
+        console.error("[register] Failed to dispatch verification email:", mailErr);
+      }
+    }
+
     const session = await createSession(userId, {
       remember: true,
       userAgent: request.headers.get("user-agent"),
       ip: clientIp(request),
     });
+
+    const isVerified = role === "admin" || !isNewUser;
 
     return json(
       {
@@ -61,7 +77,7 @@ export async function POST(request: NextRequest) {
         email,
         sessionToken: session.token,
         csrfToken: session.csrf,
-        user: { id: userId, role, emailVerified: true },
+        user: { id: userId, role, emailVerified: isVerified },
       },
       { status: 201 },
     );

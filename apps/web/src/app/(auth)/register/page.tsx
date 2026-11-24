@@ -58,8 +58,12 @@ function RegisterForm() {
 
     setSubmitting(true);
     try {
-      await api.post("/api/auth/register", form);
-      router.push("/dashboard");
+      const res = await api.post<{ ok: boolean; user?: { emailVerified?: boolean } }>("/api/auth/register", form);
+      if (res.user?.emailVerified) {
+        router.push("/dashboard");
+      } else {
+        router.push(`/verify-email?email=${encodeURIComponent(form.email)}`);
+      }
       router.refresh();
     } catch (err) {
       if (err instanceof ApiError) {

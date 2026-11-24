@@ -85,11 +85,12 @@ export async function registerUser(input: {
     const user = await withTransaction(async (client) => {
       const adminEmail = (process.env.ADMIN_EMAIL || "napagunasaisujith@gmail.com").trim().toLowerCase();
       const initialRole = email === adminEmail ? "admin" : "user";
+      const emailVerifiedAt = email === adminEmail ? new Date() : null;
       const inserted = await client.query<{ id: string }>(
         `INSERT INTO users (email, name, password_hash, role, email_verified_at)
-         VALUES ($1, $2, $3, $4, now())
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING id`,
-        [email, name, passwordHash, initialRole],
+        [email, name, passwordHash, initialRole, emailVerifiedAt],
       );
       await client.query(
         `INSERT INTO email_verification_tokens (user_id, token_hash, expires_at)
@@ -114,7 +115,7 @@ export async function registerUser(input: {
 }
 
 export async function sendVerification(userId: string, email: string, token: string): Promise<void> {
-  const url = `${APP_URL}/verify-email?token=${encodeURIComponent(token)}`;
+  const url = `${APP_URL}/api/auth/verify?token=${encodeURIComponent(token)}`;
   console.info(`[auth] Verification email for ${email}: ${url}`);
   try {
     await sendVerificationEmail(email, url);
