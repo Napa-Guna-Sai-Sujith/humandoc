@@ -13,7 +13,7 @@ import { pageRangeError } from "@/lib/validate";
 import { cn } from "@/lib/utils";
 
 export type JobOptionsState = {
-  style: "academic" | "professional" | "casual" | "creative";
+  style: "academic" | "ieee" | "professional" | "casual" | "creative";
   strength: "light" | "medium" | "strong";
   tone: number;
   language: string;
@@ -40,6 +40,7 @@ export const DEFAULT_OPTIONS: JobOptionsState = {
 
 const STYLES: Array<{ id: JobOptionsState["style"]; label: string; hint: string }> = [
   { id: "academic", label: "Academic", hint: "Formal, hedged, precise" },
+  { id: "ieee", label: "IEEE Paper", hint: "2-column academic, [1] citations & equations intact" },
   { id: "professional", label: "Professional", hint: "Clear workplace prose" },
   { id: "casual", label: "Casual", hint: "Warm and conversational" },
   { id: "creative", label: "Creative", hint: "Vivid but restrained" },

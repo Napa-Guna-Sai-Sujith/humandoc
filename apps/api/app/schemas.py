@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class JobOptions(BaseModel):
-    style: Literal["academic", "professional", "casual", "creative"] = "professional"
+    style: Literal["academic", "ieee", "professional", "casual", "creative"] = "professional"
     strength: Literal["light", "medium", "strong"] = "medium"
     tone: int = Field(default=50, ge=0, le=100, description="0 casual → 100 formal")
     language: str = "auto"

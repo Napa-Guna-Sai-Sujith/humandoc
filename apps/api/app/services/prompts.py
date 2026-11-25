@@ -6,6 +6,11 @@ STYLE_PROFILES = {
         "Precise, formal academic prose. Hedged claims, explicit reasoning, no contractions, "
         "no rhetorical questions. Keep technical vocabulary exactly."
     ),
+    "ieee": (
+        "Strict IEEE conference and journal paper style. Formal, concise, objective third-person technical prose. "
+        "Preserve IEEE numeric citations ([1], [2, 3]), section headings (I., II.), figure/table callouts "
+        "(Fig. 1, Table I), equations, and technical acronyms verbatim."
+    ),
     "professional": (
         "Clear workplace prose. Direct, confident, plain. Contractions allowed but sparing. "
         "No hype, no exclamation marks."
