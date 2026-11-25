@@ -22,6 +22,7 @@ export type JobOptionsState = {
   protectedTerms: string;
   skip: { references: boolean; tables: boolean; headers_footers: boolean; captions: boolean };
   customInstructions: string;
+  notifyOnComplete: boolean;
 };
 
 export const DEFAULT_OPTIONS: JobOptionsState = {
@@ -34,6 +35,7 @@ export const DEFAULT_OPTIONS: JobOptionsState = {
   protectedTerms: "",
   skip: { references: true, tables: true, headers_footers: true, captions: true },
   customInstructions: "",
+  notifyOnComplete: true,
 };
 
 const STYLES: Array<{ id: JobOptionsState["style"]; label: string; hint: string }> = [
@@ -220,6 +222,22 @@ export function JobOptionsForm({
               </label>
             ))}
           </div>
+        </CardContent>
+      </Card>
+      <Card className="lg:col-span-2">
+        <CardContent className="p-5">
+          <label className="flex items-center justify-between gap-4 cursor-pointer">
+            <div>
+              <h3 className="text-sm font-semibold">Email notification on completion</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                With your permission, we will send an email with a direct download link as soon as your document finishes rebuilding.
+              </p>
+            </div>
+            <Switch
+              checked={value.notifyOnComplete}
+              onCheckedChange={(next) => set("notifyOnComplete", next)}
+            />
+          </label>
         </CardContent>
       </Card>
     </div>

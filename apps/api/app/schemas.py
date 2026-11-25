@@ -18,6 +18,7 @@ class JobOptions(BaseModel):
         default_factory=lambda: {"references": True, "tables": True, "headers_footers": True, "captions": True}
     )
     custom_instructions: str = Field(default="", max_length=2000)
+    notify_on_complete: bool = False
 
     @field_validator("protected_terms")
     @classmethod

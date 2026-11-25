@@ -23,7 +23,7 @@ from sqlalchemy import func, select, text
 from app.core.config import settings
 from app.core.db import worker_session_scope
 from app.core.storage import apply_retention_tag, delete, download_to, put_bytes
-from app.models import Job, JobPage, Upload
+from app.models import Job, JobPage, Upload, User
 from app.services import analyze as analyze_service
 from app.services import (
     extract_pdf,
@@ -473,6 +473,88 @@ async def _finalize_job(job_id: str) -> None:
                 "summary": qa_payload.get("summary", {}),
             },
         )
+        if (job.options or {}).get("notify_on_complete"):
+            owner = await db.get(User, job.user_id)
+            if owner and owner.email:
+                _send_completion_email(
+                    to_email=owner.email,
+                    user_name=owner.name or "there",
+                    filename=job.source_filename,
+                    job_id=job_id,
+                    total_pages=total_pages,
+                    rewritten_blocks=job.rewritten_blocks or 0,
+                )
+
+
+def _send_completion_email(
+    *,
+    to_email: str,
+    user_name: str,
+    filename: str,
+    job_id: str,
+    total_pages: int,
+    rewritten_blocks: int,
+) -> None:
+    import os
+    import smtplib
+    from email.message import EmailMessage
+
+    app_url = (settings.app_url or os.environ.get("APP_URL") or "https://humandoc.vercel.app").rstrip("/")
+    job_url = f"{app_url}/jobs/{job_id}"
+    subject = f'HumanDoc — "{filename}" is ready to download'
+    body_text = (
+        f"Hi {user_name},\n\n"
+        f'Your document "{filename}" ({total_pages} pages, {rewritten_blocks} blocks rewritten) has finished processing.\n\n'
+        f"Open & download your file here:\n{job_url}\n\n"
+        f"Thank you,\nHumanDoc Team"
+    )
+    body_html = (
+        f"<p>Hi {user_name},</p>"
+        f'<p>Your document <strong>{filename}</strong> ({total_pages} pages, {rewritten_blocks} blocks rewritten) '
+        f"has finished processing and is ready to download.</p>"
+        f'<p style="margin:20px 0"><a href="{job_url}" '
+        f'style="background:#111827;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;'
+        f'display:inline-block;font-weight:600">Open &amp; Download Document</a></p>'
+        f'<p style="font-size:12px;color:#6b7280">Or open: {job_url}</p>'
+    )
+
+    smtp_user = settings.smtp_user or os.environ.get("SMTP_USER", "")
+    smtp_pass = (
+        settings.smtp_password
+        or settings.gmail_app_password
+        or os.environ.get("SMTP_PASSWORD")
+        or os.environ.get("GMAIL_APP_PASSWORD")
+        or ""
+    ).replace(" ", "")
+
+    if smtp_user and smtp_pass:
+        try:
+            msg = EmailMessage()
+            msg["Subject"] = subject
+            msg["From"] = f"HumanDoc <{smtp_user}>"
+            msg["To"] = to_email
+            msg.set_content(body_text)
+            msg.add_alternative(body_html, subtype="html")
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as server:
+                server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+            return
+        except Exception as exc:
+            log.warning("completion SMTP email failed for job=%s: %s", job_id, exc)
+
+    resend_key = settings.resend_api_key or os.environ.get("RESEND_API_KEY", "")
+    if resend_key:
+        try:
+            import httpx
+
+            httpx.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+                json={"from": settings.email_from, "to": [to_email], "subject": subject, "html": body_html, "text": body_text},
+                timeout=15,
+            )
+        except Exception as exc:
+            log.warning("completion Resend email failed for job=%s: %s", job_id, exc)
 
 
 async def _fail(job_id: str, message: str) -> None:

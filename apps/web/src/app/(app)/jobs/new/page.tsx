@@ -73,6 +73,7 @@ export default function NewJobPage() {
           locked_blocks: [],
           skip: options.skip,
           custom_instructions: options.customInstructions,
+          notify_on_complete: options.notifyOnComplete,
         },
       };
       const result = await api.post<{ job: Job; quota: { pages_remaining: number } }>("/backend/jobs", payload);

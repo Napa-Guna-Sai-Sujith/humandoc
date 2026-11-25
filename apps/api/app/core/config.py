@@ -109,6 +109,12 @@ class Settings(BaseSettings):
     tier_pro_pages: int = 500
     tier_studio_pages: int = 2000
 
+    smtp_user: str = ""
+    smtp_password: str = ""
+    gmail_app_password: str = ""
+    resend_api_key: str = ""
+    email_from: str = "HumanDoc <no-reply@humandoc.local>"
+
     tmp_dir: Path = Path("/tmp/humandoc")
 
     @property
