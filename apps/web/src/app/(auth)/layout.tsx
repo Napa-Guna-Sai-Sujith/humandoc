@@ -7,14 +7,18 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
     <div className="grid min-h-screen lg:grid-cols-2">
       <div className="hidden flex-col justify-between bg-primary p-10 text-primary-foreground lg:flex">
         <Logo className="[&_span]:text-primary-foreground" />
-        <div>
-          <blockquote className="max-w-md text-2xl font-medium leading-snug tracking-tight">
-            “The layout came back pixel-identical. Only the words changed — and they finally sound like me.”
-          </blockquote>
-          <p className="mt-4 text-sm text-primary-foreground/70">Research lead, 180-page technical report</p>
+        <div className="space-y-4 max-w-md">
+          <p className="text-2xl font-medium leading-snug tracking-tight">
+            Rewrite and polish your documents while keeping the original layout intact.
+          </p>
+          <ul className="space-y-2 text-sm text-primary-foreground/80">
+            <li>• Supports PDF, DOCX, PPTX, TXT &amp; Markdown</li>
+            <li>• Block-level editing with number &amp; citation validation</li>
+            <li>• Built-in plagiarism &amp; AI analysis with PDF report export</li>
+          </ul>
         </div>
-        <p className="text-xs text-primary-foreground/50">
-          Encrypted at rest and in transit · Deleted on your schedule · Never used for training
+        <p className="text-xs text-primary-foreground/60">
+          Encrypted at rest and in transit · Auto-deleted after processing · Never used for training
         </p>
       </div>
       <div className="flex flex-col">

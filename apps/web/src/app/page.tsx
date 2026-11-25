@@ -40,23 +40,23 @@ const STEPS = [
 const FEATURES = [
   {
     icon: Gauge,
-    title: "Hundreds of pages, no hard limit",
-    body: "Pages are processed in parallel batches and checkpointed one by one. Close the tab mid-job and resume from the last page.",
+    title: "Up to 100 pages per check · 500 MB max upload",
+    body: "Pages are processed in parallel batches and checkpointed one by one. Close the tab mid-job and resume from the last completed page.",
   },
   {
     icon: ImageIcon,
-    title: "Layout, untouched",
-    body: "PDF text is redacted and re-inserted in place. DOCX and PPTX text is edited inside the existing runs, so styles, numbering and images survive.",
+    title: "Layout & graphics preserved",
+    body: "PDF text is redacted and re-inserted in place. DOCX and PPTX text is edited inside existing runs, so styles, numbering, and images stay intact.",
   },
   {
     icon: Lock,
     title: "You choose what changes",
-    body: "Lock any block with a click. Skip references, tables, headers and captions. Protect product names and technical terms.",
+    body: "Lock any block with a click. Skip references, tables, headers, and captions. Protect product names and technical terms.",
   },
   {
     icon: Wand2,
-    title: "Sounds like a person",
-    body: "Sentence length varies, transitions are natural, and stock AI phrasing is rejected by a validator before it reaches your file.",
+    title: "Clear, natural prose with strict validation",
+    body: "Every rewrite is checked by deterministic validators so numbers, dates, DOIs, and citations remain 100% intact.",
   },
 ];
 
@@ -90,11 +90,11 @@ export default function LandingPage() {
             <Sparkles className="h-3 w-3" /> PDF · DOCX · PPTX · TXT · Markdown
           </p>
           <h1 className="mx-auto mt-6 max-w-3xl text-balance text-4xl font-semibold tracking-tight md:text-6xl">
-            Rewrite the words. Keep the layout exactly as it was.
+            Rewrite and polish documents without breaking the layout.
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-balance text-base text-muted-foreground md:text-lg">
-            HumanDoc rewrites document text so it reads naturally and human-written, block by block, while preserving
-            formatting, fonts, images and page geometry. Built for files of any size — including hundreds of pages.
+            Improve clarity, readability, and flow block by block while preserving your document&apos;s formatting,
+            fonts, tables, images, and page geometry. Built for PDF, DOCX, PPTX, TXT, and Markdown files up to 500 MB.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Button size="lg" asChild>
@@ -158,35 +158,45 @@ export default function LandingPage() {
           </div>
 
           <div className="rounded-2xl border bg-card p-5 shadow-sm">
-            <div className="rounded-xl bg-muted/60 p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-                <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                <span className="ml-2 text-[11px] text-muted-foreground">quarterly-report.pdf · 142 pages</span>
+            <div className="rounded-xl bg-muted/60 p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                  <span className="ml-1 text-[11px] font-medium text-foreground">Sample Before &amp; After · research-paper.pdf</span>
+                </div>
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                  10 → 10 pages preserved
+                </span>
               </div>
-              <div className="space-y-2 rounded-lg bg-white p-4 shadow-sm">
-                <div className="h-3 w-1/2 rounded bg-slate-900" />
-                <div className="h-2 w-full rounded bg-slate-200" />
-                <div className="h-2 w-11/12 rounded bg-slate-200" />
-                <div className="h-2 w-full rounded bg-slate-200" />
-                <div className="mt-4 h-2 w-1/3 rounded bg-slate-900" />
-                <div className="h-2 w-full rounded bg-slate-200" />
-                <div className="h-2 w-4/5 rounded bg-slate-200" />
-                <div className="mt-4 flex gap-3">
-                  <div className="h-16 flex-1 rounded bg-emerald-100" />
-                  <div className="h-16 flex-1 rounded bg-sky-100" />
+
+              <div className="grid gap-2.5 sm:grid-cols-2 text-xs">
+                <div className="rounded-lg border bg-white p-3 space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Before (Original)</p>
+                  <p className="leading-relaxed text-slate-700">
+                    &ldquo;In order to investigate the impact of neural architectures, this paper delves into transformer models.
+                    Furthermore, it plays a crucial role in achieving 94.2% accuracy across 12 benchmarks.&rdquo;
+                  </p>
+                </div>
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3 space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700">After (Polished)</p>
+                  <p className="leading-relaxed text-slate-800">
+                    &ldquo;To evaluate neural architectures, this study examines transformer models—directly driving 94.2%
+                    accuracy across 12 benchmarks while keeping every figure intact.&rdquo;
+                  </p>
                 </div>
               </div>
-              <div className="mt-3 flex items-center justify-between text-[11px] text-muted-foreground">
-                <span>Page 87 of 142</span>
-                <span className="text-emerald-700">images unchanged</span>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground pt-1">
+                <span>Numbers &amp; citations: <strong className="text-foreground">94.2%, 12 (100% preserved)</strong></span>
+                <span className="text-emerald-700 font-medium">Layout &amp; graphics intact</span>
               </div>
             </div>
             <ul className="mt-4 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
               <li className="flex items-center gap-2"><ShieldCheck className="h-3.5 w-3.5" /> Same page count</li>
-              <li className="flex items-center gap-2"><ImageIcon className="h-3.5 w-3.5" /> Images byte-identical</li>
-              <li className="flex items-center gap-2"><FileText className="h-3.5 w-3.5" /> Fonts preserved</li>
+              <li className="flex items-center gap-2"><ImageIcon className="h-3.5 w-3.5" /> Images &amp; graphics preserved</li>
+              <li className="flex items-center gap-2"><FileText className="h-3.5 w-3.5" /> Fonts &amp; tables preserved</li>
               <li className="flex items-center gap-2"><Lock className="h-3.5 w-3.5" /> Block-level locks</li>
             </ul>
           </div>
@@ -201,11 +211,12 @@ export default function LandingPage() {
               Every job shows an estimated cost before you start. No surprise bills.
             </p>
           </div>
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { name: "Free", pages: "20 pages / month", price: "$0" },
-              { name: "Pro", pages: "500 pages / month", price: "$29" },
-              { name: "Studio", pages: "2,000 pages / month", price: "$79" },
+              { name: "Free", pages: "20 pages / month · 2 uploads", price: "$0" },
+              { name: "Starter", pages: "100 pages / month · 15 uploads", price: "$12" },
+              { name: "Pro", pages: "500 pages / month · 50 uploads", price: "$29" },
+              { name: "Studio", pages: "2,000 pages / month · 200 uploads", price: "$79" },
             ].map((tier) => (
               <div key={tier.name} className="rounded-xl border bg-card p-5">
                 <p className="text-sm font-medium">{tier.name}</p>
@@ -240,7 +251,7 @@ export default function LandingPage() {
               <ul className="mt-3 space-y-2">
                 <li>Encrypted at rest (S3 SSE-AES256) and in transit.</li>
                 <li>Per-account isolation and short-lived signed URLs.</li>
-                <li>Uploads and outputs auto-delete after 7 days by default.</li>
+                <li>Uploads and outputs auto-delete automatically after processing.</li>
                 <li>We never train models on your documents.</li>
               </ul>
             </div>

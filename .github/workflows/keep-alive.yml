@@ -1,0 +1,16 @@
+name: Keep Render API Warm
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render API health endpoint
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" https://humandoc.onrender.com/health)
+          echo "Render /health HTTP status: $code"
+          test "$code" = "200"

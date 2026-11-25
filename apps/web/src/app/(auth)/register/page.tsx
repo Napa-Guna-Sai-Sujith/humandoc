@@ -223,8 +223,25 @@ function RegisterForm() {
 
 export default function RegisterPage() {
   return (
-    <Suspense fallback={null}>
-      <RegisterForm />
-    </Suspense>
+    <>
+      <noscript>
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          JavaScript is required to create a HumanDoc account. Please enable JavaScript in your browser and reload this page.
+        </div>
+      </noscript>
+      <Suspense
+        fallback={
+          <div className="space-y-4">
+            <div className="h-7 w-48 animate-pulse rounded bg-muted" />
+            <div className="h-4 w-64 animate-pulse rounded bg-muted" />
+            <div className="h-10 w-full animate-pulse rounded bg-muted" />
+            <div className="h-10 w-full animate-pulse rounded bg-muted" />
+            <div className="h-10 w-full animate-pulse rounded bg-muted" />
+          </div>
+        }
+      >
+        <RegisterForm />
+      </Suspense>
+    </>
   );
 }

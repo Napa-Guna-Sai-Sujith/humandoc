@@ -58,8 +58,8 @@ const TIERS: Tier[] = [
       "100 pages a month",
       "Up to 15 uploads a month",
       "Max 30 pages per plagiarism check",
-      "Auto-humanize to <10% HD Safe",
       "Priority queue & email support",
+      "Download as PDF, DOCX, or TXT",
     ],
   },
   {
@@ -72,8 +72,8 @@ const TIERS: Tier[] = [
       "500 pages a month",
       "Up to 50 uploads a month",
       "Max 60 pages per plagiarism check",
-      "0% AI & <5% Plagiarism Guarantee",
-      "UGC & University Compliance Report",
+      "Detailed similarity & QA reports",
+      "Bulk page ranges & glossary",
     ],
   },
   {
@@ -86,21 +86,40 @@ const TIERS: Tier[] = [
       "2,000 pages a month",
       "Up to 200 uploads a month",
       "Max 100 pages per plagiarism check",
-      "Dedicated journal database pool",
-      "Highest priority & custom retention",
+      "Dedicated processing priority",
+      "Custom retention window",
     ],
   },
 ];
 
-function PricingContent() {
+const PRICING_FAQS = [
+  {
+    q: "What happens if I reach my monthly page or upload limit?",
+    a: "Hard stop at your plan allowance — we never auto-charge overages or send surprise bills. You can upgrade any time to unlock more pages and uploads.",
+  },
+  {
+    q: "What file sizes and formats are supported?",
+    a: "PDF, DOCX, PPTX, TXT, and Markdown files up to 500 MB (up to 100 pages per plagiarism check on Studio/Enterprise).",
+  },
+  {
+    q: "What happens if a page fails during processing?",
+    a: "Every page is checkpointed individually. You can resume from the last completed page without restarting from zero.",
+  },
+  {
+    q: "How does plan activation work?",
+    a: "Choose a plan and submit your mobile number. Our team contacts you within a couple of hours to finalize payment and activate your plan.",
+  },
+];
+
+function PricingContent({ isAuthenticated }: { isAuthenticated: boolean }) {
   const router = useRouter();
   const params = useSearchParams();
   const { toast } = useToast();
+  const [billingCycle, setBillingCycle] = React.useState<"monthly" | "yearly">("monthly");
   const [usage, setUsage] = React.useState<Usage | null>(null);
   const [profile, setProfile] = React.useState<{ name: string; email: string }>({ name: "", email: "" });
   const [portalLoading, setPortalLoading] = React.useState(false);
 
-  // Modal State for Plan Request
   const [selectedTier, setSelectedTier] = React.useState<Tier | null>(null);
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [phone, setPhone] = React.useState("");
@@ -114,20 +133,26 @@ function PricingContent() {
   } | null>(null);
 
   React.useEffect(() => {
-    api.get<Usage>("/api/billing/usage").then(setUsage).catch(() => setUsage(null));
-    api
-      .get<{ user: { name: string; email: string } }>("/api/auth/me")
-      .then((res) => {
-        setProfile({ name: res.user.name || "", email: res.user.email });
-        setFullName(res.user.name || "");
-      })
-      .catch(() => undefined);
+    if (isAuthenticated) {
+      api.get<Usage>("/api/billing/usage").then(setUsage).catch(() => setUsage(null));
+      api
+        .get<{ user: { name: string; email: string } }>("/api/auth/me")
+        .then((res) => {
+          setProfile({ name: res.user.name || "", email: res.user.email });
+          setFullName(res.user.name || "");
+        })
+        .catch(() => undefined);
+    }
 
     if (params.get("upgraded")) toast({ title: "Welcome aboard", description: "Your plan is now active.", variant: "success" });
     if (params.get("canceled")) toast({ title: "Checkout canceled", description: "No changes were made." });
-  }, [params, toast]);
+  }, [isAuthenticated, params, toast]);
 
   const handleOpenPlanModal = (tier: Tier) => {
+    if (!isAuthenticated) {
+      router.push(`/register?plan=${tier.id}`);
+      return;
+    }
     setSelectedTier(tier);
     setIsModalOpen(true);
   };
@@ -158,7 +183,7 @@ function PricingContent() {
         tier: selectedTier.id,
         phone: trimmedPhone,
         name: fullName || profile.name,
-        notes,
+        notes: billingCycle === "yearly" ? `[Yearly billing] ${notes}`.trim() : notes,
       });
 
       toast({
@@ -213,11 +238,36 @@ function PricingContent() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Pricing &amp; usage</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Simple plans by page count. No per-token surprises — every job shows its cost before you start.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Pricing &amp; usage</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Transparent plans by page count and uploads. Hard stop at your limit — zero surprise overage charges.
+          </p>
+        </div>
+
+        <div className="inline-flex items-center rounded-lg border bg-card p-1 text-xs">
+          <button
+            type="button"
+            onClick={() => setBillingCycle("monthly")}
+            className={cn(
+              "rounded-md px-3 py-1.5 font-medium transition-colors",
+              billingCycle === "monthly" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Monthly
+          </button>
+          <button
+            type="button"
+            onClick={() => setBillingCycle("yearly")}
+            className={cn(
+              "rounded-md px-3 py-1.5 font-medium transition-colors",
+              billingCycle === "yearly" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Yearly (Save 20%)
+          </button>
+        </div>
       </div>
 
       {submittedMessage ? (
@@ -273,6 +323,8 @@ function PricingContent() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {TIERS.map((tier) => {
           const current = usage?.tier === tier.id;
+          const displayPrice =
+            tier.price === 0 ? 0 : billingCycle === "yearly" ? Math.round(tier.price * 0.8) : tier.price;
           return (
             <Card key={tier.id} className={cn("flex flex-col", current && "border-primary")}>
               <CardHeader className="pb-4">
@@ -284,9 +336,14 @@ function PricingContent() {
               </CardHeader>
               <CardContent className="flex-1">
                 <p className="text-3xl font-semibold tracking-tight">
-                  ${tier.price}
+                  ${displayPrice}
                   <span className="text-sm font-normal text-muted-foreground">/mo</span>
                 </p>
+                {billingCycle === "yearly" && tier.price > 0 ? (
+                  <p className="mt-0.5 text-[11px] text-emerald-700 font-medium">
+                    Billed ${(displayPrice * 12).toLocaleString()}/year (20% off)
+                  </p>
+                ) : null}
                 <ul className="mt-4 space-y-2">
                   {tier.features.map((feature) => (
                     <li key={feature} className="flex items-start gap-2 text-xs text-muted-foreground">
@@ -299,7 +356,7 @@ function PricingContent() {
               <CardFooter>
                 {tier.id === "free" ? (
                   <Button variant="outline" className="w-full" asChild>
-                    <Link href="/jobs/new">Start free</Link>
+                    <Link href={isAuthenticated ? "/jobs/new" : "/register"}>Start free</Link>
                   </Button>
                 ) : (
                   <Button
@@ -308,7 +365,7 @@ function PricingContent() {
                     onClick={() => handleOpenPlanModal(tier)}
                     disabled={current}
                   >
-                    {current ? "Current plan" : "Choose plan"}
+                    {current ? "Current plan" : isAuthenticated ? "Choose plan" : "Sign up & choose plan"}
                   </Button>
                 )}
               </CardFooter>
@@ -317,9 +374,18 @@ function PricingContent() {
         })}
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Choose a plan to submit an upgrade request. Our team will contact your mobile number directly to activate your account.
-      </p>
+      {/* Pricing FAQ */}
+      <div className="rounded-xl border bg-card p-6 space-y-4">
+        <h2 className="text-base font-semibold">Frequently asked questions</h2>
+        <div className="grid gap-4 md:grid-cols-2">
+          {PRICING_FAQS.map((item) => (
+            <div key={item.q} className="space-y-1">
+              <p className="text-sm font-medium">{item.q}</p>
+              <p className="text-xs leading-relaxed text-muted-foreground">{item.a}</p>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Plan Request Pop-up Modal */}
       <Dialog
@@ -328,16 +394,14 @@ function PricingContent() {
         title={selectedTier ? `Request ${selectedTier.name} Plan` : "Request Plan"}
         description={
           selectedTier
-            ? `$${selectedTier.price}/month · ${selectedTier.pages.toLocaleString()} pages per month`
+            ? `$${billingCycle === "yearly" ? Math.round(selectedTier.price * 0.8) : selectedTier.price}/month · ${selectedTier.pages.toLocaleString()} pages per month`
             : undefined
         }
       >
         {selectedTier ? (
           <form onSubmit={handleSubmitPlanRequest} className="space-y-4">
             <div className="rounded-lg bg-muted/60 p-3.5 text-xs text-muted-foreground border">
-              <p className="font-semibold text-foreground">
-                Upgrading to {selectedTier.name} Plan
-              </p>
+              <p className="font-semibold text-foreground">Upgrading to {selectedTier.name} Plan</p>
               <p className="mt-1">
                 Enter your contact details below. An email notification will be sent immediately to the HumanDoc team and we will reach out directly to your mobile number to activate your plan.
               </p>
@@ -454,10 +518,10 @@ function PricingContent() {
   );
 }
 
-export default function PricingPage() {
+export function PricingClient({ isAuthenticated }: { isAuthenticated: boolean }) {
   return (
-    <Suspense fallback={null}>
-      <PricingContent />
+    <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-muted" />}>
+      <PricingContent isAuthenticated={isAuthenticated} />
     </Suspense>
   );
 }

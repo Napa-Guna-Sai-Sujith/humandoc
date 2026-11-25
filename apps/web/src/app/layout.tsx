@@ -4,11 +4,21 @@ import { Toaster } from "@/components/ui/toast";
 
 import "./globals.css";
 
+const APP_URL = process.env.APP_URL || "https://humandoc.vercel.app";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(APP_URL),
   title: { default: "HumanDoc — Rewrite the words, keep the layout", template: "%s · HumanDoc" },
   description:
-    "HumanDoc rewrites document text so it reads naturally and human-written, while preserving layout, formatting and images exactly. PDF, DOCX, PPTX and Markdown.",
-  keywords: ["document rewriting", "PDF editor", "humanize text", "layout preserving", "DOCX"],
+    "Rewrite and polish PDF, DOCX, PPTX, and Markdown documents while preserving formatting, fonts, tables, and images.",
+  openGraph: {
+    type: "website",
+    siteName: "HumanDoc",
+    title: "HumanDoc — Rewrite the words, keep the layout",
+    description:
+      "Rewrite and polish PDF, DOCX, PPTX, and Markdown documents while preserving formatting, fonts, tables, and images.",
+    url: APP_URL,
+  },
 };
 
 export const viewport: Viewport = { themeColor: "#0f172a", width: "device-width", initialScale: 1 };
