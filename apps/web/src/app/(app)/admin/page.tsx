@@ -245,6 +245,16 @@ export default function AdminPage() {
         console.warn("Plan assigned, but invoice email failed:", mailErr);
       }
 
+      // Auto-clear any pending plan request alerts for this user
+      const userAlerts = planRequestsByUser.get(planUser.id) || [];
+      if (userAlerts.length > 0) {
+        await Promise.all(
+          userAlerts.map((req) =>
+            api.post("/api/admin/plan-requests/done", { requestId: req.id }).catch(() => undefined),
+          ),
+        );
+      }
+
       toast({
         title: `Plan assigned to ${planUser.email}`,
         description: invoiceSent
