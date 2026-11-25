@@ -414,6 +414,55 @@ export default function DrillbitPlagiarismPage() {
     toast({ title: "Downloaded", description: "Humanized document saved to your device." });
   };
 
+  const [downloadingFormat, setDownloadingFormat] = useState<"pdf" | "docx" | null>(null);
+
+  const handleDownloadFile = async (format: "pdf" | "docx" | "txt") => {
+    if (!text.trim()) return;
+    if (format === "txt") {
+      handleDownloadText();
+      return;
+    }
+
+    setDownloadingFormat(format);
+    try {
+      const res = await fetch("/api/drillbit/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: docTitle || "HumanDoc_Document",
+          text,
+          format,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Failed to export .${format}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(docTitle || "HumanDoc_Document").replace(/[^a-zA-Z0-9_-]/g, "_")}_HD_Humanized.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: `Downloaded (.${format})`,
+        description: `Document saved as .${format.toUpperCase()} file.`,
+        variant: "success",
+      });
+    } catch (err) {
+      toast({
+        title: "Download Failed",
+        description: err instanceof Error ? err.message : `Could not export .${format} file.`,
+        variant: "error",
+      });
+    } finally {
+      setDownloadingFormat(null);
+    }
+  };
+
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const handleDownloadReportPdf = async () => {
@@ -1109,7 +1158,33 @@ export default function DrillbitPlagiarismPage() {
                   )}
                   Drillbit Report (.pdf)
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleDownloadText}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownloadFile("pdf")}
+                  disabled={downloadingFormat !== null}
+                >
+                  {downloadingFormat === "pdf" ? (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-1.5" />
+                  )}
+                  PDF (.pdf)
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownloadFile("docx")}
+                  disabled={downloadingFormat !== null}
+                >
+                  {downloadingFormat === "docx" ? (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-1.5" />
+                  )}
+                  Word (.docx)
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handleDownloadFile("txt")}>
                   <Download className="h-4 w-4 mr-1.5" /> Text (.txt)
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleCopyText}>

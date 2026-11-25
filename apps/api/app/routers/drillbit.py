@@ -258,3 +258,98 @@ async def generate_drillbit_report_pdf(req: DrillbitReportPDFRequest) -> Respons
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename_out}"'},
     )
+
+
+class DrillbitExportRequest(BaseModel):
+    title: str = "HumanDoc Document"
+    text: str
+    format: str = "pdf"  # pdf | docx | txt
+
+
+@router.post("/export")
+async def export_drillbit_document(req: DrillbitExportRequest) -> Response:
+    """Export the analyzed or humanized document text as .pdf, .docx, or .txt."""
+    import re
+
+    fmt = (req.format or "pdf").lower().strip()
+    if fmt not in ("pdf", "docx", "txt"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Supported export formats are pdf, docx, and txt.")
+    if not req.text or not req.text.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Document text is empty.")
+
+    safe_base = re.sub(r"[^a-zA-Z0-9_-]", "_", req.title.strip() or "HumanDoc_Document")[:80]
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", req.text.strip()) if p.strip()]
+    if not paragraphs:
+        paragraphs = [req.text.strip()]
+
+    if fmt == "txt":
+        data = req.text.encode("utf-8")
+        return Response(
+            content=data,
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{safe_base}.txt"'},
+        )
+
+    if fmt == "docx":
+        import docx
+
+        d = docx.Document()
+        d.add_heading(req.title.strip() or "HumanDoc Document", level=1)
+        for para in paragraphs:
+            d.add_paragraph(para)
+        buf = io.BytesIO()
+        d.save(buf)
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f'attachment; filename="{safe_base}.docx"'},
+        )
+
+    # fmt == "pdf"
+    import fitz
+
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    margin_l, margin_r = 50, 545
+    max_w = margin_r - margin_l
+    y = 60.0
+
+    # Title on page 1
+    title_text = (req.title.strip() or "HumanDoc Document")[:90]
+    page.insert_text(fitz.Point(margin_l, y), title_text, fontsize=15, fontname="hebo", color=(0.1, 0.12, 0.18))
+    y += 14
+    page.draw_line(fitz.Point(margin_l, y), fitz.Point(margin_r, y), color=(0.82, 0.84, 0.88), width=0.8)
+    y += 22
+
+    line_h = 15.0
+    page_bottom = 790.0
+
+    for para in paragraphs:
+        words = para.split()
+        cur: list[str] = []
+        for w in words:
+            test = " ".join(cur + [w])
+            if fitz.get_text_length(test, fontname="helv", fontsize=10.5) > max_w and cur:
+                if y + line_h > page_bottom:
+                    page = doc.new_page(width=595, height=842)
+                    y = 55.0
+                page.insert_text(fitz.Point(margin_l, y), " ".join(cur), fontsize=10.5, fontname="helv", color=(0.12, 0.12, 0.12))
+                y += line_h
+                cur = [w]
+            else:
+                cur.append(w)
+        if cur:
+            if y + line_h > page_bottom:
+                page = doc.new_page(width=595, height=842)
+                y = 55.0
+            page.insert_text(fitz.Point(margin_l, y), " ".join(cur), fontsize=10.5, fontname="helv", color=(0.12, 0.12, 0.12))
+            y += line_h
+        y += 8  # clean paragraph gap without excessive whitespace
+
+    pdf_bytes = doc.tobytes(garbage=3, deflate=True)
+    doc.close()
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{safe_base}.pdf"'},
+    )
