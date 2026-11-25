@@ -12,9 +12,11 @@ import {
   LayoutDashboard,
   LogOut,
   Mail,
+  Menu,
   Settings,
   ShieldCheck,
   Sparkles,
+  X,
 } from "lucide-react";
 
 import { Logo } from "@/components/logo";
@@ -128,23 +130,23 @@ export function AppShell({ user, children }: { user: User; children: React.React
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b bg-card/80 px-4 backdrop-blur lg:px-8">
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-2 sm:gap-3 border-b bg-card/80 px-3 sm:px-4 backdrop-blur lg:px-8">
           <button
             type="button"
             className="rounded-md p-2 hover:bg-accent lg:hidden"
             onClick={() => setMobileOpen(!mobileOpen)}
             aria-label="Toggle navigation"
           >
-            <FileText className="h-5 w-5" />
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
           <div className="lg:hidden">
             <Logo compact />
           </div>
-          <div className="ml-auto flex items-center gap-3">
-            <span className="hidden text-xs text-muted-foreground sm:block">
-              {usage ? `${usage.pagesRemaining} pages left` : ""}
+          <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            <span className="text-[11px] sm:text-xs text-muted-foreground rounded-full bg-muted/70 px-2 py-0.5 sm:bg-transparent sm:px-0 sm:py-0">
+              {usage ? `${usage.pagesRemaining.toLocaleString()}p left` : ""}
             </span>
-            <div className="h-6 w-px bg-border" />
+            <div className="h-5 sm:h-6 w-px bg-border" />
             <Link href="/settings" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-xs uppercase border border-primary/20">
                 {initials}
@@ -154,7 +156,7 @@ export function AppShell({ user, children }: { user: User; children: React.React
                 <p className="text-[10px] text-muted-foreground">{user.email}</p>
               </div>
             </Link>
-            <Button variant="ghost" size="sm" onClick={signOut} className="gap-1.5 ml-1">
+            <Button variant="ghost" size="sm" onClick={signOut} className="gap-1.5 px-2 sm:px-3">
               <LogOut className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Sign out</span>
             </Button>
@@ -162,21 +164,40 @@ export function AppShell({ user, children }: { user: User; children: React.React
         </header>
 
         {mobileOpen ? (
-          <nav className="border-b bg-card px-3 py-2 lg:hidden">
+          <nav className="border-b bg-card px-3 py-2 space-y-1 lg:hidden">
             {NAV.map((item) => {
+              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
               const Icon = item.icon;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={() => setMobileOpen(false)}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                    active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
                 >
                   <Icon className="h-4 w-4" />
                   {item.label}
                 </Link>
               );
             })}
+            {user.role === "admin" ? (
+              <Link
+                href="/admin"
+                onClick={() => setMobileOpen(false)}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                  pathname.startsWith("/admin")
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                )}
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Admin
+              </Link>
+            ) : null}
             <div className="mt-2 pt-2 border-t text-xs px-2 text-muted-foreground space-y-1">
               <p className="font-semibold text-foreground text-[11px]">For queries: napagunasaisujith@gmail.com</p>
               <button
@@ -193,7 +214,7 @@ export function AppShell({ user, children }: { user: User; children: React.React
           </nav>
         ) : null}
 
-        <main className="flex-1 px-4 py-8 lg:px-8">
+        <main className="flex-1 px-3 py-5 sm:px-4 sm:py-8 lg:px-8">
           <div className="mx-auto w-full max-w-6xl">{children}</div>
         </main>
 

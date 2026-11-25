@@ -365,17 +365,17 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <ShieldCheck className="h-6 w-6 text-primary" />
+          <ShieldCheck className="h-6 w-6 text-primary shrink-0" />
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Admin Portal</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Admin Portal</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">
               Full control: manage plans, user quotas, account edits, jobs, and AI settings.
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant={allPlanRequests.length > 0 ? "default" : "outline"}
             size="sm"
@@ -413,7 +413,7 @@ export default function AdminPage() {
       {!stats ? (
         <Skeleton className="h-24 w-full" />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
           {[
             ["Total Users", stats.users],
             ["Total Jobs", stats.jobs],

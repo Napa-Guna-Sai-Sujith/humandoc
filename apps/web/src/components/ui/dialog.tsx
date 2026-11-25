@@ -30,13 +30,13 @@ export function Dialog({ open, onClose, title, description, children, className 
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-hidden />
       <div
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-10 w-full max-w-lg rounded-xl border bg-card p-6 shadow-xl animate-fade-up",
+          "relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border bg-card p-4 sm:p-6 shadow-xl animate-fade-up",
           className,
         )}
       >

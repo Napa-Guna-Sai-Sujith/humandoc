@@ -533,8 +533,8 @@ export default function DrillbitPlagiarismPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight">HD Plagiarism &amp; AI Analysis</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">HD Plagiarism &amp; AI Analysis</h1>
             <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
               {currentTierLabel} Plan · Max {maxCheckPages} Pages / Check
             </Badge>
