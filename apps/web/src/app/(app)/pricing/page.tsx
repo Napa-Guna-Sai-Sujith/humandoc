@@ -104,6 +104,10 @@ function PricingContent() {
   const [notes, setNotes] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [submittedMessage, setSubmittedMessage] = React.useState<string | null>(null);
+  const [confirmationPopup, setConfirmationPopup] = React.useState<{
+    tierName: string;
+    phone: string;
+  } | null>(null);
 
   React.useEffect(() => {
     api.get<Usage>("/api/billing/usage").then(setUsage).catch(() => setUsage(null));
@@ -154,13 +158,17 @@ function PricingContent() {
       });
 
       toast({
-        title: "Plan Request Submitted",
-        description: res.message || "We will contact you shortly to activate your plan.",
+        title: "Plan Request Sent",
+        description: res.message || "Our team will contact you in a couple of hours.",
         variant: "success",
       });
 
-      setSubmittedMessage(`Thank you! Your request for the ${selectedTier.name} plan has been received. Our team will contact ${trimmedPhone} shortly to activate your account.`);
+      setSubmittedMessage(
+        `Thank you! Your request for the ${selectedTier.name} plan has been sent. Our team will contact you at ${trimmedPhone} in a couple of hours so you can discuss with them and take the plan.`,
+      );
+      setConfirmationPopup({ tierName: selectedTier.name, phone: trimmedPhone });
       setIsModalOpen(false);
+      setSelectedTier(null);
       setPhone("");
       setNotes("");
     } catch (err) {
@@ -404,6 +412,36 @@ function PricingContent() {
             </div>
           </form>
         ) : null}
+      </Dialog>
+
+      {/* Post-Submit Confirmation Pop-up */}
+      <Dialog
+        open={Boolean(confirmationPopup)}
+        onClose={() => setConfirmationPopup(null)}
+        title="Plan Request Sent!"
+        description={
+          confirmationPopup
+            ? `${confirmationPopup.tierName} Plan · Contact: ${confirmationPopup.phone}`
+            : undefined
+        }
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-950">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+            <div className="space-y-1 text-sm">
+              <p className="font-semibold">Our team will contact you in a couple of hours.</p>
+              <p className="text-emerald-900/90">
+                You can discuss your requirements with them and take the plan. We&apos;ve also sent a confirmation email to{" "}
+                <span className="font-medium">{profile.email || "your email"}</span>.
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button type="button" onClick={() => setConfirmationPopup(null)}>
+              Got it
+            </Button>
+          </div>
+        </div>
       </Dialog>
     </div>
   );

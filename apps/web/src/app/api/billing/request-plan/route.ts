@@ -104,7 +104,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      message: `Your request for the ${tierName} plan has been received! Our team will contact you at ${trimmedPhone} shortly to activate your plan.`,
+      message: `Your request for the ${tierName} plan has been sent! Our team will contact you at ${trimmedPhone} in a couple of hours so you can discuss with them and take the plan.`,
     });
   } catch (error) {
     console.error("[request-plan] Error processing plan request:", error);
