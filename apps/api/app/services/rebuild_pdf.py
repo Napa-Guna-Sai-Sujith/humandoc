@@ -97,6 +97,9 @@ class _FontResolver:
         self.page = page
         self.embedded: dict[str, tuple[int, str]] = {}
         self._counter = 0
+        self._resolved_cache: dict[int, str] = {}
+        self._failed_xrefs: set[int] = set()
+        self._font_objs: dict[str, fitz.Font] = {}
         try:
             fonts = page.get_fonts(full=True)
         except Exception:
@@ -125,17 +128,25 @@ class _FontResolver:
         for key in (target, block.font.lower()):
             if key in self.embedded:
                 xref, basefont = self.embedded[key]
+                if xref in self._resolved_cache:
+                    return self._resolved_cache[xref], True
+                if xref in self._failed_xrefs:
+                    continue
                 try:
                     info = self.doc.extract_font(xref)
                     ext = (info[1] or "").lower() if info and len(info) > 1 else ""
                     buf = info[3] if info and len(info) > 3 else b""
                     if buf and ext in ("ttf", "otf"):
-                        fitz.Font(fontbuffer=buf)
+                        font_obj = fitz.Font(fontbuffer=buf)
                         alias = f"HBF{self._counter}"
                         self._counter += 1
                         self.page.insert_font(fontname=alias, fontbuffer=buf)
+                        self._resolved_cache[xref] = alias
+                        self._font_objs[alias] = font_obj
                         return alias, True
+                    self._failed_xrefs.add(xref)
                 except Exception as exc:  # font extraction can fail for Type3 / CFF / subset fonts
+                    self._failed_xrefs.add(xref)
                     log.debug("font reuse failed for %s: %s", basefont, exc)
         return self.fallback_for(block), False
 
@@ -161,6 +172,49 @@ def _insert(page: fitz.Page, rect: fitz.Rect, text: str, fontname: str, size: fl
     return -1.0
 
 
+def _fits_in_box(
+    text: str,
+    box: fitz.Rect,
+    size: float,
+    lineheight: float,
+    fontname: str,
+    font_obj: fitz.Font | None = None,
+) -> bool:
+    """Fast in-memory line-wrap estimator to avoid expensive apply_redactions() retries."""
+    max_w = max(10.0, box.width - 2.0)
+    max_h = max(8.0, box.height)
+    line_h = size * lineheight
+    max_lines = max(1, int(max_h // line_h))
+
+    def _measure(s: str) -> float:
+        if font_obj is not None:
+            return font_obj.text_length(s, fontsize=size)
+        try:
+            return fitz.get_text_length(s, fontname=fontname, fontsize=size)
+        except Exception:
+            return len(s) * size * 0.52
+
+    lines = 0
+    for para in text.split("\n"):
+        words = para.split()
+        if not words:
+            lines += 1
+            continue
+        cur = words[0]
+        for w in words[1:]:
+            if _measure(f"{cur} {w}") <= max_w:
+                cur = f"{cur} {w}"
+            else:
+                lines += 1
+                if lines > max_lines:
+                    return False
+                cur = w
+        lines += 1
+        if lines > max_lines:
+            return False
+    return True
+
+
 def _fit_and_insert(
     page: fitz.Page,
     rect: fitz.Rect,
@@ -171,46 +225,44 @@ def _fit_and_insert(
     align: int,
     lineheight: float = 1.18,
     fallback_font: str = "helv",
+    font_obj: fitz.Font | None = None,
 ) -> tuple[float, float]:
-    """Fit text into rect adjusting font size dynamically to avoid overflow or huge white space.
-    Returns (used_size, spare_space).
-    """
-    # Normalize paragraph text: collapse internal hard line breaks to let text flow naturally
+    """Fit text into rect adjusting font size dynamically in memory before inserting once."""
     norm_text = " ".join(text.split()) if "\n" in text and len(text) > 40 else text.strip()
-    
-    # Calculate box with proper font metrics headroom and margin bounds
+
     v_pad = max(4.0, base_size * 0.35)
     page_w = page.rect.width
     r_x1 = max(rect.x1 + 4.0, page_w - 60.0 if rect.x1 > page_w * 0.72 else rect.x1 + 4.0)
     box = fitz.Rect(rect.x0, rect.y0 - 0.5, r_x1, rect.y1 + v_pad)
-    
+
     candidates = [
         base_size,
-        base_size * 0.98,
-        base_size * 0.95,
+        base_size * 0.96,
         base_size * 0.92,
-        base_size * 0.88,
-        base_size * 0.84,
+        base_size * 0.86,
         base_size * 0.80,
-        base_size * 0.76,
+        base_size * 0.75,
         7.5,
     ]
-    
+
+    chosen = candidates[-1]
     for sz in candidates:
-        spare = _insert(page, box, norm_text, fontname, sz, color, align, lineheight, fallback_font=fallback_font)
-        if spare >= 0:
-            return sz, spare
-        # Clear partial attempt before trying next size
+        if _fits_in_box(norm_text, box, sz, lineheight, fontname, font_obj):
+            chosen = sz
+            break
+
+    spare = _insert(page, box, norm_text, fontname, chosen, color, align, lineheight, fallback_font=fallback_font)
+    if spare < 0 and chosen > candidates[-1]:
+        # Single fast retry at smallest readable size only if PyMuPDF's exact glyph kerning overflowed
         page.add_redact_annot(box + (-1, -1, 1, 1), fill=False, text="")
         page.apply_redactions(
             images=fitz.PDF_REDACT_IMAGE_NONE,
             graphics=fitz.PDF_REDACT_LINE_ART_NONE,
             text=fitz.PDF_REDACT_TEXT_REMOVE,
         )
-
-    # Final attempt with smallest readable size
-    spare = _insert(page, box, norm_text, fontname, candidates[-1], color, align, lineheight, fallback_font=fallback_font)
-    return candidates[-1], spare
+        spare = _insert(page, box, norm_text, fontname, candidates[-1], color, align, lineheight, fallback_font=fallback_font)
+        return candidates[-1], spare
+    return chosen, spare
 
 
 def rebuild_pdf(
@@ -267,7 +319,10 @@ def rebuild_pdf(
             align = ALIGN_MAP.get(block.align, fitz.TEXT_ALIGN_LEFT)
             text = block.new_text
 
-            used_size, spare = _fit_and_insert(page, rect, text, fontname, size, color, align, fallback_font=fallback_font)
+            font_obj = resolver._font_objs.get(fontname)
+            used_size, spare = _fit_and_insert(
+                page, rect, text, fontname, size, color, align, fallback_font=fallback_font, font_obj=font_obj
+            )
             if used_size < size:
                 report.overflow_fixes.append(
                     PageFix(block.id, "shrunk", size, used_size, f"{round((1 - used_size / size) * 100)}% font fitted")
@@ -284,7 +339,7 @@ def rebuild_pdf(
                         )
             report.rewritten_blocks += 1
 
-    doc.save(dst, garbage=3, deflate=True, clean=True)
+    doc.save(dst, garbage=2, deflate=True, clean=False)
     doc.close()
     return report
 
