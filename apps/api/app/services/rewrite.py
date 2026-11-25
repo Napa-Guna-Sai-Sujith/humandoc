@@ -568,6 +568,19 @@ class RewriteResult:
     terms: dict[str, str] = field(default_factory=dict)
 
 
+_IEEE_SECTION_RE = re.compile(
+    r"^(?:[IVXLC]+\.\s+[A-Z0-9][A-Z0-9\s,&:/-]{1,60}|(?:Abstract|Keywords|Index Terms|ACKNOWLEDGMENT|REFERENCES))$",
+    re.I,
+)
+
+
+def _is_preserved_ieee_heading(block: Block, style: str) -> bool:
+    if style != "ieee":
+        return False
+    clean = " ".join(block.text.split()).strip()
+    return block.word_count <= 8 and bool(_IEEE_SECTION_RE.match(clean))
+
+
 class RewriteEngine:
     """Multi-provider rewrite engine: Gemini, Anthropic, OpenAI, or Deep Local Humanizer."""
 
@@ -715,6 +728,9 @@ class RewriteEngine:
                       section_heading: str = "") -> RewriteResult:
         if block.skip or not block.text.strip() or block.word_count < 2:
             return RewriteResult(block=block, changed=False, reason="skipped")
+        if _is_preserved_ieee_heading(block, self.style):
+            block.new_text = block.text
+            return RewriteResult(block=block, changed=False, reason="ieee-heading-preserved")
 
         user_prompt = prompts.build_block_prompt(block, prev_text, next_text, section_heading)
         corrective = ""

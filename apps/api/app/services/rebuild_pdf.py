@@ -50,8 +50,8 @@ ALIGN_MAP = {
 }
 
 SANS_HINTS = ("helv", "arial", "calibri", "roboto", "inter", "open", "noto sans", "segoe", "sans")
-SERIF_HINTS = ("times", "garamond", "georgia", "serif", "cambria", "book", "palatino", "minion")
-MONO_HINTS = ("courier", "mono", "consol", "menlo", "code", "source code")
+SERIF_HINTS = ("times", "garamond", "georgia", "serif", "cambria", "book", "palatino", "minion", "liberationserif", "dejavuserif")
+MONO_HINTS = ("courier", "mono", "consol", "menlo", "code", "source code", "liberationmono")
 
 
 def _norm_font(name: str) -> str:
@@ -133,11 +133,18 @@ class _FontResolver:
                 if xref in self._failed_xrefs:
                     continue
                 try:
+                    # Subsetted PDF fonts (XXXXXX+FontName) frequently lack complete Unicode cmaps;
+                    # verify every common ASCII glyph exists before reusing, otherwise fall back cleanly.
                     info = self.doc.extract_font(xref)
                     ext = (info[1] or "").lower() if info and len(info) > 1 else ""
                     buf = info[3] if info and len(info) > 3 else b""
                     if buf and ext in ("ttf", "otf"):
                         font_obj = fitz.Font(fontbuffer=buf)
+                        is_complete = all(font_obj.has_glyph(ord(ch)) for ch in "AaEeIiOoUu01.,")
+                        if not is_complete:
+                            log.debug("skipping incomplete/subsetted font %s", basefont)
+                            self._failed_xrefs.add(xref)
+                            continue
                         alias = f"HBF{self._counter}"
                         self._counter += 1
                         self.page.insert_font(fontname=alias, fontbuffer=buf)
@@ -151,19 +158,45 @@ class _FontResolver:
         return self.fallback_for(block), False
 
 
+_BASE14_SET = frozenset(BASE14.values())
+_ASCII_SAFE_MAP = str.maketrans({
+    "\u2014": " - ",  # em dash (renders as ? in Base-14 PDFDocEncoding)
+    "\u2013": "-",    # en dash
+    "\u2212": "-",    # minus sign
+    "\u2018": "'",
+    "\u2019": "'",
+    "\u201c": '"',
+    "\u201d": '"',
+    "\u2026": "...",
+    "\u2022": "*",
+    "\u00d7": "x",
+    "\u2264": "<=",
+    "\u2265": ">=",
+    "\u2248": "~=",
+    "\u00a0": " ",
+})
+
+
+def _sanitize_for_font(text: str, fontname: str) -> str:
+    if fontname in _BASE14_SET:
+        return text.translate(_ASCII_SAFE_MAP)
+    return text
+
+
 def _insert(page: fitz.Page, rect: fitz.Rect, text: str, fontname: str, size: float,
             color: tuple[float, float, float], align: int, lineheight: float,
             fallback_font: str = "helv") -> float:
     for candidate_font in (fontname, fallback_font, "helv"):
+        prepared = _sanitize_for_font(text, candidate_font)
         try:
             try:
                 return page.insert_textbox(
-                    rect, text, fontsize=size, fontname=candidate_font, color=color, align=align,
+                    rect, prepared, fontsize=size, fontname=candidate_font, color=color, align=align,
                     lineheight=lineheight, overlay=True,
                 )
             except TypeError:
                 return page.insert_textbox(
-                    rect, text, fontsize=size, fontname=candidate_font, color=color, align=align, overlay=True
+                    rect, prepared, fontsize=size, fontname=candidate_font, color=color, align=align, overlay=True
                 )
         except Exception as exc:
             if candidate_font == "helv":

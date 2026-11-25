@@ -3,7 +3,19 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React from "react";
-import { AlertTriangle, ArrowRight, Coins, FileText, Languages, Loader2, ScanSearch } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Check,
+  Coins,
+  Copy,
+  Download,
+  FileText,
+  Languages,
+  Loader2,
+  ScanSearch,
+  Sparkles,
+} from "lucide-react";
 
 import { BlockPreview } from "@/components/block-preview";
 import { DEFAULT_OPTIONS, JobOptionsForm, type JobOptionsState } from "@/components/job-options";
@@ -12,15 +24,49 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/components/ui/toast";
 import { api, ApiError, type Analysis, type Job } from "@/lib/api";
 import { cn, formatBytes } from "@/lib/utils";
 
 type UploadInfo = { uploadId: string; filename: string; size: number; mime: string };
 
+type QuotaState = {
+  tier: string;
+  pagesPerMonth: number;
+  pagesUsed: number;
+  pagesRemaining: number;
+  maxCheckPages: number;
+  maxUploads: number;
+  uploadsUsed: number;
+  uploadsRemaining: number;
+};
+
+type PasteResult = {
+  originalText: string;
+  humanizedText: string;
+  paragraphsChanged: number;
+  totalParagraphs: number;
+  wordCount: number;
+  pageCount: number;
+  style: string;
+};
+
 export default function NewJobPage() {
   const router = useRouter();
+  const { toast } = useToast();
+  const [inputMode, setInputMode] = React.useState<"upload" | "paste">("upload");
   const [upload, setUpload] = React.useState<UploadInfo | null>(null);
+  const [pastedTitle, setPastedTitle] = React.useState("Humanized Document");
+  const [pastedText, setPastedText] = React.useState("");
+  const [pasteResult, setPasteResult] = React.useState<PasteResult | null>(null);
+  const [convertingPaste, setConvertingPaste] = React.useState(false);
+  const [copiedPaste, setCopiedPaste] = React.useState(false);
+  const [downloadingFmt, setDownloadingFmt] = React.useState<"pdf" | "docx" | null>(null);
+  const [quota, setQuota] = React.useState<QuotaState | null>(null);
   const [options, setOptions] = React.useState<JobOptionsState>(DEFAULT_OPTIONS);
   const [job, setJob] = React.useState<Job | null>(null);
   const [analysis, setAnalysis] = React.useState<Analysis | null>(null);
@@ -34,6 +80,10 @@ export default function NewJobPage() {
       .get<{ max_upload_mb: number }>("/backend/config")
       .then((config) => setMaxMb(config.max_upload_mb))
       .catch(() => setMaxMb(500));
+    api
+      .get<QuotaState>("/api/billing/usage")
+      .then(setQuota)
+      .catch(() => setQuota(null));
   }, []);
 
   React.useEffect(() => {
@@ -98,29 +148,220 @@ export default function NewJobPage() {
     }
   };
 
+  const convertPastedText = async () => {
+    const clean = pastedText.trim();
+    if (!clean) {
+      setError("Please paste the text you want to convert and humanize.");
+      return;
+    }
+    setConvertingPaste(true);
+    setError(null);
+    try {
+      const res = await api.post<PasteResult & { ok: boolean; quota?: QuotaState }>("/api/jobs/rewrite-text", {
+        title: pastedTitle,
+        text: clean,
+        style: options.style,
+        strength: options.strength,
+        tone: options.tone,
+        language: options.language,
+        protected_terms: options.protectedTerms
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
+        custom_instructions: options.customInstructions,
+      });
+      setPasteResult(res);
+      if (res.quota) setQuota(res.quota);
+      toast({
+        title: "Text Converted & Humanized",
+        description: `Rewrote ${res.paragraphsChanged} of ${res.totalParagraphs} paragraph(s) in ${res.style.toUpperCase()} style.`,
+        variant: "success",
+      });
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Could not convert text.";
+      setError(msg);
+      toast({ title: "Conversion Failed", description: msg, variant: "error" });
+    } finally {
+      setConvertingPaste(false);
+    }
+  };
+
+  const copyHumanizedOutput = () => {
+    if (!pasteResult?.humanizedText) return;
+    navigator.clipboard.writeText(pasteResult.humanizedText);
+    setCopiedPaste(true);
+    toast({ title: "Copied to clipboard", description: "Humanized text is ready to paste anywhere.", variant: "success" });
+    setTimeout(() => setCopiedPaste(false), 2000);
+  };
+
+  const downloadHumanizedOutput = async (fmt: "pdf" | "docx" | "txt") => {
+    if (!pasteResult?.humanizedText) return;
+    const baseName = (pastedTitle || "HumanDoc_Output").replace(/[^a-zA-Z0-9_-]/g, "_");
+    if (fmt === "txt") {
+      const blob = new Blob([pasteResult.humanizedText], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${baseName}_Humanized.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    setDownloadingFmt(fmt);
+    try {
+      const res = await fetch("/api/drillbit/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: pastedTitle || "Humanized Document",
+          text: pasteResult.humanizedText,
+          format: fmt,
+        }),
+      });
+      if (!res.ok) throw new Error(`Failed to export .${fmt}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${baseName}_Humanized.${fmt}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast({
+        title: "Download Failed",
+        description: err instanceof Error ? err.message : `Could not export .${fmt} file.`,
+        variant: "error",
+      });
+    } finally {
+      setDownloadingFmt(null);
+    }
+  };
+
   const analyzing = job && ["queued", "analyzing"].includes(job.status);
   const ready = Boolean(analysis && job?.status === "analyzed");
+  const pastedWords = pastedText.trim() ? pastedText.trim().split(/\s+/).length : 0;
+  const pastedPages = Math.max(1, Math.ceil(pastedWords / 350));
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">New job</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Upload a document, check the pre-job report, lock anything you want preserved, then rewrite.
-        </p>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">New job</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Upload a document or paste text directly, choose your style (including IEEE Paper), and convert cleanly.
+          </p>
+        </div>
       </div>
+
+      {quota ? (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 text-xs shadow-xs">
+          <div className="flex flex-wrap items-center gap-3">
+            <Badge variant="secondary" className="capitalize font-semibold">
+              {quota.tier} Plan
+            </Badge>
+            <span className="text-muted-foreground">
+              Uploads:{" "}
+              <strong className={cn("text-foreground", quota.uploadsRemaining <= 0 && "text-destructive")}>
+                {quota.uploadsUsed} / {quota.maxUploads >= 10000 ? "Unlimited" : quota.maxUploads}
+              </strong>
+            </span>
+            <span>·</span>
+            <span className="text-muted-foreground">
+              Pages left:{" "}
+              <strong className={cn("text-foreground", quota.pagesRemaining <= 0 && "text-destructive")}>
+                {quota.pagesRemaining.toLocaleString()} / {quota.pagesPerMonth.toLocaleString()}
+              </strong>
+            </span>
+            <span>·</span>
+            <span className="text-muted-foreground">
+              Max per request: <strong className="text-foreground">{quota.maxCheckPages} pages</strong>
+            </span>
+          </div>
+          {quota.tier !== "studio" && quota.tier !== "enterprise" && quota.pagesPerMonth < 10000 ? (
+            <Button size="sm" variant="outline" className="h-7 text-xs" asChild>
+              <Link href="/pricing">Upgrade Plan</Link>
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="space-y-6">
         {!job ? (
           <>
             <Card>
-              <CardContent className="p-5">
-                <h2 className="mb-4 text-sm font-semibold">1 · Upload</h2>
-                <UploadZone onUploaded={setUpload} maxMb={maxMb} />
+              <CardContent className="p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-sm font-semibold">1 · Input</h2>
+                  <div className="inline-flex rounded-lg border bg-muted p-0.5 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInputMode("upload");
+                        setError(null);
+                      }}
+                      className={cn(
+                        "rounded-md px-3 py-1 font-medium transition-colors",
+                        inputMode === "upload" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      Upload File
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInputMode("paste");
+                        setError(null);
+                      }}
+                      className={cn(
+                        "rounded-md px-3 py-1 font-medium transition-colors",
+                        inputMode === "paste" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      Paste Text
+                    </button>
+                  </div>
+                </div>
+
+                {inputMode === "upload" ? (
+                  <UploadZone onUploaded={setUpload} maxMb={maxMb} />
+                ) : (
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="paste-title">Document Title (Optional)</Label>
+                      <Input
+                        id="paste-title"
+                        value={pastedTitle}
+                        onChange={(e) => setPastedTitle(e.target.value)}
+                        placeholder="e.g. IEEE Paper Introduction or Thesis Chapter"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <Label htmlFor="paste-body">Paste Your Text</Label>
+                        <span className="text-muted-foreground">
+                          {pastedWords.toLocaleString()} words · ~{pastedPages} / {quota?.maxCheckPages ?? 10} page(s)
+                        </span>
+                      </div>
+                      <Textarea
+                        id="paste-body"
+                        rows={8}
+                        value={pastedText}
+                        onChange={(e) => setPastedText(e.target.value)}
+                        placeholder="Paste your paragraphs or IEEE paper section here..."
+                        className="min-h-[180px]"
+                      />
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
-            {upload ? (
+            {inputMode === "upload" && upload ? (
               <>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <FileText className="h-4 w-4" />
@@ -139,7 +380,12 @@ export default function NewJobPage() {
                   <Alert variant="destructive">
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Could not create the job</AlertTitle>
-                    <AlertDescription>{error}</AlertDescription>
+                    <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+                      <span>{error}</span>
+                      <Button size="sm" variant="outline" className="h-7 bg-background text-foreground" asChild>
+                        <Link href="/pricing">Upgrade Plan</Link>
+                      </Button>
+                    </AlertDescription>
                   </Alert>
                 ) : null}
 
@@ -149,6 +395,103 @@ export default function NewJobPage() {
                     {creating ? "Analysing…" : "Analyse document"}
                   </Button>
                 </div>
+              </>
+            ) : null}
+
+            {inputMode === "paste" ? (
+              <>
+                <Card>
+                  <CardContent className="p-5">
+                    <h2 className="mb-4 text-sm font-semibold">2 · How should it read?</h2>
+                    <JobOptionsForm value={options} onChange={setOptions} totalPages={pastedPages} />
+                  </CardContent>
+                </Card>
+
+                {error ? (
+                  <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Notice</AlertTitle>
+                    <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+                      <span>{error}</span>
+                      <Button size="sm" variant="outline" className="h-7 bg-background text-foreground" asChild>
+                        <Link href="/pricing">Upgrade Plan</Link>
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+
+                <div className="flex justify-end">
+                  <Button size="lg" onClick={convertPastedText} disabled={convertingPaste || !pastedText.trim()}>
+                    {convertingPaste ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    {convertingPaste ? "Converting to Humanized Text…" : "Convert & Humanize Text"}
+                  </Button>
+                </div>
+
+                {pasteResult ? (
+                  <Card className="border-emerald-300 shadow-sm animate-fade-up">
+                    <CardContent className="p-5 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="success">Humanized AI Output Ready</Badge>
+                            <Badge variant="outline" className="uppercase text-[11px]">{pasteResult.style}</Badge>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {pasteResult.wordCount.toLocaleString()} words · {pasteResult.pageCount} page(s) · {pasteResult.paragraphsChanged} of {pasteResult.totalParagraphs} paragraph(s) rewritten
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button size="sm" onClick={copyHumanizedOutput} className="gap-1.5">
+                            {copiedPaste ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                            {copiedPaste ? "Copied!" : "Copy Humanized Text"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => downloadHumanizedOutput("pdf")}
+                            disabled={downloadingFmt !== null}
+                          >
+                            {downloadingFmt === "pdf" ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Download className="h-3.5 w-3.5 mr-1" />}
+                            PDF (.pdf)
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => downloadHumanizedOutput("docx")}
+                            disabled={downloadingFmt !== null}
+                          >
+                            {downloadingFmt === "docx" ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Download className="h-3.5 w-3.5 mr-1" />}
+                            Word (.docx)
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => downloadHumanizedOutput("txt")}>
+                            <Download className="h-3.5 w-3.5 mr-1" />
+                            Text (.txt)
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="rounded-lg border bg-muted/40 p-3.5 space-y-1.5">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Original Text
+                          </p>
+                          <div className="max-h-80 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                            {pasteResult.originalText}
+                          </div>
+                        </div>
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3.5 space-y-1.5">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
+                            Humanized Output (Ready to Copy &amp; Use)
+                          </p>
+                          <div className="max-h-80 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-foreground">
+                            {pasteResult.humanizedText}
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : null}
               </>
             ) : null}
           </>

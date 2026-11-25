@@ -420,3 +420,72 @@ async def generate_invoice_pdf(req: InvoicePDFRequest) -> Response:
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="HumanDoc_Invoice_{req.invoiceId}.pdf"'},
     )
+
+
+class TextRewriteRequest(BaseModel):
+    text: str
+    style: str = "professional"
+    strength: str = "medium"
+    tone: int = 50
+    language: str = "auto"
+    protected_terms: list[str] = []
+    custom_instructions: str = ""
+
+
+@router.post("/rewrite-text")
+async def rewrite_plain_text(req: TextRewriteRequest) -> dict:
+    """Rewrite pasted text paragraph-by-paragraph using RewriteEngine and return humanized text."""
+    import re
+
+    from app.services.blocks import Block
+    from app.services.rewrite import RewriteEngine
+
+    raw = (req.text or "").strip()
+    if not raw:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Text is required.")
+
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", raw) if p.strip()]
+    if not paragraphs:
+        paragraphs = [raw]
+
+    style = (req.style or "professional").lower()
+    if style not in ("academic", "ieee", "professional", "casual", "creative"):
+        style = "professional"
+    strength = (req.strength or "medium").lower()
+    if strength not in ("light", "medium", "strong"):
+        strength = "medium"
+
+    glossary = {t.strip(): t.strip() for t in req.protected_terms if t.strip()}
+    engine = RewriteEngine(
+        style=style,
+        strength=strength,
+        language=req.language or "auto",
+        custom=req.custom_instructions or "",
+        glossary=glossary,
+    )
+
+    rewritten_parts: list[str] = []
+    changed_count = 0
+    for idx, para in enumerate(paragraphs):
+        block = Block(id=f"txt_{idx}", page=1, text=para)
+        if block.word_count < 2:
+            rewritten_parts.append(para)
+            continue
+        prev_t = paragraphs[idx - 1] if idx > 0 else ""
+        next_t = paragraphs[idx + 1] if idx + 1 < len(paragraphs) else ""
+        res = engine.rewrite_block(block, prev_text=prev_t, next_text=next_t)
+        out = (block.new_text or para).strip()
+        if res.changed or out != para:
+            changed_count += 1
+        rewritten_parts.append(out)
+
+    humanized = "\n\n".join(rewritten_parts)
+    return {
+        "ok": True,
+        "originalText": raw,
+        "humanizedText": humanized,
+        "paragraphsChanged": changed_count,
+        "totalParagraphs": len(paragraphs),
+        "wordCount": len(humanized.split()),
+        "style": style,
+    }
