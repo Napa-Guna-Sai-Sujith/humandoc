@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models import AuditLog, Subscription, Upload, UsageRecord
 
-
 TIER_MAX_UPLOADS = {
     "free": 2,
     "starter": 15,

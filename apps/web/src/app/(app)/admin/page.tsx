@@ -148,9 +148,23 @@ export default function AdminPage() {
     void load();
   }, [load]);
 
+  const completedRequestIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    for (const log of audit || []) {
+      if (log.action === "billing.plan_request_completed") {
+        const reqId = (log.meta as Record<string, unknown> | undefined)?.request_id;
+        if (typeof reqId === "string") ids.add(reqId);
+      }
+    }
+    return ids;
+  }, [audit]);
+
   const allPlanRequests = React.useMemo(
-    () => (audit || []).filter((log) => log.action === "billing.plan_requested"),
-    [audit],
+    () =>
+      (audit || []).filter(
+        (log) => log.action === "billing.plan_requested" && !completedRequestIds.has(log.id),
+      ),
+    [audit, completedRequestIds],
   );
 
   const planRequestsByUser = React.useMemo(() => {
@@ -163,6 +177,31 @@ export default function AdminPage() {
     }
     return map;
   }, [allPlanRequests]);
+
+  const markAlertDone = async (requestId: string) => {
+    setBusy(`done-${requestId}`);
+    try {
+      await api.post("/api/admin/plan-requests/done", { requestId });
+      setAlertRequestTarget((prev) =>
+        prev
+          ? {
+              ...prev,
+              requests: prev.requests.filter((r) => r.id !== requestId),
+            }
+          : null,
+      );
+      toast({ title: "Alert marked as Done", variant: "success" });
+      await load();
+    } catch (err) {
+      toast({
+        title: "Could not mark alert as Done",
+        description: err instanceof ApiError ? err.message : undefined,
+        variant: "error",
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
 
   // Open Plan Modal
   const openPlanModal = (user: AdminUser, suggestedTier?: string) => {
@@ -180,7 +219,7 @@ export default function AdminPage() {
     setResetUsage(false);
   };
 
-  // Save Plan
+  // Save Plan & Send Invoice PDF Email
   const savePlan = async () => {
     if (!planUser) return;
     setBusy("saving-plan");
@@ -190,7 +229,29 @@ export default function AdminPage() {
         pages_per_month: planPages,
         reset_usage: resetUsage,
       });
-      toast({ title: `Plan assigned to ${planUser.email}`, variant: "success" });
+
+      // Send plan activation confirmation + PDF invoice email to user
+      let invoiceSent = false;
+      try {
+        await api.post("/api/admin/plan-invoice", {
+          userId: planUser.id,
+          userName: planUser.name,
+          userEmail: planUser.email,
+          tier: planTier,
+          pagesPerMonth: planPages,
+        });
+        invoiceSent = true;
+      } catch (mailErr) {
+        console.warn("Plan assigned, but invoice email failed:", mailErr);
+      }
+
+      toast({
+        title: `Plan assigned to ${planUser.email}`,
+        description: invoiceSent
+          ? "Confirmation email with PDF invoice has been sent to the user."
+          : "Plan updated (invoice email could not be delivered).",
+        variant: "success",
+      });
       setPlanUser(null);
       await load();
     } catch (err) {
@@ -977,8 +1038,22 @@ export default function AdminPage() {
                     <span className="text-foreground">{notes || "No additional notes provided."}</span>
                   </div>
 
-                  {matchedUser ? (
-                    <div className="flex justify-end pt-1">
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 gap-1 text-xs border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                      onClick={() => markAlertDone(req.id)}
+                      disabled={busy === `done-${req.id}`}
+                    >
+                      {busy === `done-${req.id}` ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Check className="h-3.5 w-3.5" />
+                      )}
+                      Done
+                    </Button>
+                    {matchedUser ? (
                       <Button
                         size="sm"
                         className="h-7 gap-1 text-xs"
@@ -990,8 +1065,8 @@ export default function AdminPage() {
                         <CreditCard className="h-3.5 w-3.5" />
                         Assign {tierName} Plan
                       </Button>
-                    </div>
-                  ) : null}
+                    ) : null}
+                  </div>
                 </div>
               );
             })

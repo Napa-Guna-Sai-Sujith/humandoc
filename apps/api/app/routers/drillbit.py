@@ -353,3 +353,70 @@ async def export_drillbit_document(req: DrillbitExportRequest) -> Response:
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{safe_base}.pdf"'},
     )
+
+
+class InvoicePDFRequest(BaseModel):
+    invoiceId: str
+    userName: str
+    userEmail: str
+    tierName: str
+    tierPrice: int
+    pagesPerMonth: int
+    maxUploads: int
+    maxCheckPages: int
+    periodEnd: str
+
+
+@router.post("/invoice-pdf")
+async def generate_invoice_pdf(req: InvoicePDFRequest) -> Response:
+    """Generate a clean PDF invoice for a plan upgrade/purchase."""
+    import fitz
+
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+
+    # Header banner
+    page.draw_rect(fitz.Rect(0, 0, 595, 85), color=(0.07, 0.09, 0.15), fill=(0.07, 0.09, 0.15))
+    page.insert_text(fitz.Point(45, 42), "HUMANDOC", fontsize=20, fontname="hebo", color=(1, 1, 1))
+    page.insert_text(fitz.Point(45, 62), "OFFICIAL SUBSCRIPTION INVOICE", fontsize=10, fontname="helv", color=(0.75, 0.82, 0.95))
+    page.insert_text(fitz.Point(410, 44), f"Invoice #{req.invoiceId}", fontsize=11, fontname="hebo", color=(1, 1, 1))
+    page.insert_text(fitz.Point(410, 62), f"Date: {dt.datetime.utcnow().strftime('%Y-%m-%d')}", fontsize=9.5, fontname="helv", color=(0.8, 0.85, 0.95))
+
+    # Status pill
+    page.draw_rect(fitz.Rect(45, 110, 175, 134), color=(0.06, 0.55, 0.35), fill=(0.91, 0.99, 0.95), width=1)
+    page.insert_text(fitz.Point(60, 126), "STATUS: PAID & ACTIVE", fontsize=9.5, fontname="hebo", color=(0.04, 0.45, 0.28))
+
+    # Billed To box
+    page.draw_rect(fitz.Rect(45, 152, 550, 225), color=(0.85, 0.87, 0.91), width=1)
+    page.insert_text(fitz.Point(60, 174), "BILLED TO", fontsize=9, fontname="hebo", color=(0.4, 0.45, 0.55))
+    page.insert_text(fitz.Point(60, 194), req.userName[:55], fontsize=12, fontname="hebo", color=(0.1, 0.12, 0.16))
+    page.insert_text(fitz.Point(60, 212), req.userEmail[:65], fontsize=10, fontname="helv", color=(0.3, 0.35, 0.42))
+
+    # Line items table header
+    page.draw_rect(fitz.Rect(45, 250, 550, 278), color=(0.94, 0.96, 0.98), fill=(0.94, 0.96, 0.98))
+    page.insert_text(fitz.Point(60, 268), "DESCRIPTION", fontsize=9, fontname="hebo", color=(0.3, 0.35, 0.45))
+    page.insert_text(fitz.Point(340, 268), "ALLOWANCE", fontsize=9, fontname="hebo", color=(0.3, 0.35, 0.45))
+    page.insert_text(fitz.Point(480, 268), "AMOUNT", fontsize=9, fontname="hebo", color=(0.3, 0.35, 0.45))
+
+    uploads_label = "Unlimited" if req.maxUploads >= 10000 else str(req.maxUploads)
+    page.insert_text(fitz.Point(60, 305), f"HumanDoc {req.tierName} Plan (Monthly)", fontsize=11, fontname="hebo", color=(0.1, 0.12, 0.16))
+    page.insert_text(fitz.Point(60, 323), f"Max {req.maxCheckPages} pages/check · Valid until {req.periodEnd}", fontsize=9, fontname="helv", color=(0.4, 0.45, 0.52))
+    page.insert_text(fitz.Point(340, 305), f"{req.pagesPerMonth:,} pages/mo", fontsize=10, fontname="helv", color=(0.15, 0.18, 0.22))
+    page.insert_text(fitz.Point(340, 322), f"{uploads_label} uploads/mo", fontsize=9, fontname="helv", color=(0.4, 0.45, 0.52))
+    page.insert_text(fitz.Point(480, 305), f"${req.tierPrice}.00", fontsize=11, fontname="hebo", color=(0.1, 0.12, 0.16))
+
+    page.draw_line(fitz.Point(45, 345), fitz.Point(550, 345), color=(0.85, 0.87, 0.91), width=1)
+    page.insert_text(fitz.Point(390, 372), "Total Paid:", fontsize=11, fontname="hebo", color=(0.3, 0.35, 0.42))
+    page.insert_text(fitz.Point(480, 372), f"${req.tierPrice}.00 USD", fontsize=12, fontname="hebo", color=(0.06, 0.5, 0.32))
+
+    # Footer
+    page.insert_text(fitz.Point(45, 430), "Thank you for upgrading with HumanDoc!", fontsize=10.5, fontname="hebo", color=(0.15, 0.2, 0.3))
+    page.insert_text(fitz.Point(45, 448), "For billing or support queries, contact napagunasaisujith@gmail.com", fontsize=9, fontname="helv", color=(0.45, 0.48, 0.55))
+
+    pdf_bytes = doc.tobytes(garbage=3, deflate=True)
+    doc.close()
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="HumanDoc_Invoice_{req.invoiceId}.pdf"'},
+    )

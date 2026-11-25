@@ -1,7 +1,19 @@
 import "server-only";
 import nodemailer from "nodemailer";
 
-type MailInput = { to: string; subject: string; html: string; text?: string };
+type MailAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+};
+
+type MailInput = {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+  attachments?: MailAttachment[];
+};
 
 const FROM = process.env.EMAIL_FROM || process.env.SMTP_USER || "HumanDoc <no-reply@humandoc.local>";
 
@@ -33,7 +45,7 @@ function layout(title: string, body: string): string {
  * 2. Supports Resend REST API
  * 3. Falls back to server logging in development if neither is configured
  */
-export async function sendEmail({ to, subject, html, text }: MailInput): Promise<void> {
+export async function sendEmail({ to, subject, html, text, attachments }: MailInput): Promise<void> {
   const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "napagunasaisujith@gmail.com";
   const smtpPass = (process.env.SMTP_PASSWORD || process.env.GMAIL_APP_PASSWORD || "ipnckxgruffvcuss").replace(/\s+/g, "");
 
@@ -58,6 +70,11 @@ export async function sendEmail({ to, subject, html, text }: MailInput): Promise
             subject,
             html,
             text: text ?? html.replace(/<[^>]+>/g, " "),
+            attachments: attachments?.map((att) => ({
+              filename: att.filename,
+              content: att.content,
+              contentType: att.contentType || "application/pdf",
+            })),
           },
           (err, info) => {
             if (err) {
@@ -260,5 +277,72 @@ export async function sendPlanRequestUserConfirmationEmail({
       `,
     ),
     text: `Hi ${userName || "there"},\n\nWe received your request for the ${tierName} Plan ($${tierPrice}/mo).\nOur team will reach out to your mobile number shortly to activate your plan.\n\nThank you,\nHumanDoc Team`,
+  });
+}
+
+export async function sendPlanActivatedInvoiceEmail({
+  to,
+  userName,
+  tierName,
+  tierPrice,
+  pagesPerMonth,
+  maxUploads,
+  maxCheckPages,
+  invoiceId,
+  periodEnd,
+  invoicePdfBuffer,
+}: {
+  to: string;
+  userName: string;
+  tierName: string;
+  tierPrice: number;
+  pagesPerMonth: number;
+  maxUploads: number;
+  maxCheckPages: number;
+  invoiceId: string;
+  periodEnd: string;
+  invoicePdfBuffer?: Buffer;
+}): Promise<void> {
+  const appUrl =
+    process.env.APP_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.NODE_ENV === "production" ? "https://humandoc.vercel.app" : "http://localhost:3000");
+
+  const uploadsLabel = maxUploads >= 10000 ? "Unlimited" : String(maxUploads);
+
+  await sendEmail({
+    to,
+    subject: `HumanDoc — ${tierName} Plan Activated! (Invoice #${invoiceId})`,
+    html: layout(
+      `Your ${escapeHtml(tierName)} Plan is Now Active`,
+      `
+      <p>Hi ${escapeHtml(userName || "there")},</p>
+      <p>Congratulations! You have <strong>successfully purchased and activated the ${escapeHtml(tierName)} Plan</strong> on HumanDoc.</p>
+      <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:16px;margin:18px 0">
+        <p style="margin:0 0 8px;font-weight:700;color:#065f46;font-size:15px">Invoice &amp; Plan Summary</p>
+        <p style="margin:4px 0;font-size:14px;color:#064e3b"><strong>Invoice ID:</strong> ${escapeHtml(invoiceId)}</p>
+        <p style="margin:4px 0;font-size:14px;color:#064e3b"><strong>Plan Tier:</strong> ${escapeHtml(tierName)} ($${tierPrice}/month)</p>
+        <p style="margin:4px 0;font-size:14px;color:#064e3b"><strong>Monthly Page Allowance:</strong> ${pagesPerMonth.toLocaleString()} pages/month</p>
+        <p style="margin:4px 0;font-size:14px;color:#064e3b"><strong>Upload Limit:</strong> ${escapeHtml(uploadsLabel)} uploads/month</p>
+        <p style="margin:4px 0;font-size:14px;color:#064e3b"><strong>Max Pages Per Plagiarism Check:</strong> ${maxCheckPages} pages</p>
+        <p style="margin:4px 0;font-size:14px;color:#064e3b"><strong>Active Until:</strong> ${escapeHtml(periodEnd)}</p>
+        <p style="margin:4px 0;font-size:14px;color:#064e3b"><strong>Status:</strong> PAID &amp; ACTIVE</p>
+      </div>
+      <p style="font-size:14px;color:#374151">
+        Your official PDF invoice is attached to this email for your records. You can start uploading documents and running HD Plagiarism &amp; AI Humanization right away.
+      </p>
+      ${button(`${appUrl}/drillbit`, "Open HD Plagiarism & Dashboard")}
+      `,
+    ),
+    text: `Hi ${userName || "there"},\n\nYou have successfully purchased and activated the ${tierName} Plan on HumanDoc!\n\nInvoice ID: ${invoiceId}\nPlan: ${tierName} ($${tierPrice}/month)\nMonthly Pages: ${pagesPerMonth.toLocaleString()}\nUpload Limit: ${uploadsLabel}\nMax Pages Per Check: ${maxCheckPages}\nActive Until: ${periodEnd}\nStatus: PAID & ACTIVE\n\nYour official invoice PDF is attached.\n\nOpen HumanDoc: ${appUrl}/drillbit`,
+    attachments: invoicePdfBuffer
+      ? [
+          {
+            filename: `HumanDoc_Invoice_${invoiceId}.pdf`,
+            content: invoicePdfBuffer,
+            contentType: "application/pdf",
+          },
+        ]
+      : undefined,
   });
 }
