@@ -112,6 +112,14 @@ class _FontResolver:
             # also index by full name without normalization
             self.embedded.setdefault(basefont.lower(), (xref, basefont))
 
+    def fallback_for(self, block: Block) -> str:
+        family = _font_family(block.font, block.spans[0].flags if block.spans else 0)
+        bold = bool(block.bold) or (block.spans[0].flags & BOLD_FLAG if block.spans else False)
+        italic = bool(block.spans[0].italic if block.spans else False) or (
+            block.spans[0].flags & ITALIC_FLAG if block.spans else False
+        )
+        return BASE14.get((family, bold, italic), "helv")
+
     def resolve(self, block: Block) -> tuple[str, bool]:
         target = _norm_font(block.font)
         for key in (target, block.font.lower()):
@@ -119,32 +127,38 @@ class _FontResolver:
                 xref, basefont = self.embedded[key]
                 try:
                     info = self.doc.extract_font(xref)
-                    if info and info[3]:
+                    ext = (info[1] or "").lower() if info and len(info) > 1 else ""
+                    buf = info[3] if info and len(info) > 3 else b""
+                    if buf and ext in ("ttf", "otf"):
+                        fitz.Font(fontbuffer=buf)
                         alias = f"HBF{self._counter}"
                         self._counter += 1
-                        self.page.insert_font(fontname=alias, fontbuffer=info[3])
+                        self.page.insert_font(fontname=alias, fontbuffer=buf)
                         return alias, True
-                except Exception as exc:  # font extraction can fail for Type3 / subset fonts
+                except Exception as exc:  # font extraction can fail for Type3 / CFF / subset fonts
                     log.debug("font reuse failed for %s: %s", basefont, exc)
-        family = _font_family(block.font, block.spans[0].flags if block.spans else 0)
-        bold = bool(block.bold) or (block.spans[0].flags & BOLD_FLAG if block.spans else False)
-        italic = bool(block.spans[0].italic if block.spans else False) or (
-            block.spans[0].flags & ITALIC_FLAG if block.spans else False
-        )
-        return BASE14.get((family, bold, italic), "helv"), False
+        return self.fallback_for(block), False
 
 
 def _insert(page: fitz.Page, rect: fitz.Rect, text: str, fontname: str, size: float,
-            color: tuple[float, float, float], align: int, lineheight: float) -> float:
-    try:
-        return page.insert_textbox(
-            rect, text, fontsize=size, fontname=fontname, color=color, align=align,
-            lineheight=lineheight, overlay=True,
-        )
-    except TypeError:
-        return page.insert_textbox(
-            rect, text, fontsize=size, fontname=fontname, color=color, align=align, overlay=True
-        )
+            color: tuple[float, float, float], align: int, lineheight: float,
+            fallback_font: str = "helv") -> float:
+    for candidate_font in (fontname, fallback_font, "helv"):
+        try:
+            try:
+                return page.insert_textbox(
+                    rect, text, fontsize=size, fontname=candidate_font, color=color, align=align,
+                    lineheight=lineheight, overlay=True,
+                )
+            except TypeError:
+                return page.insert_textbox(
+                    rect, text, fontsize=size, fontname=candidate_font, color=color, align=align, overlay=True
+                )
+        except Exception as exc:
+            if candidate_font == "helv":
+                raise
+            log.debug("insert_textbox failed with font %s (%s), falling back", candidate_font, exc)
+    return -1.0
 
 
 def _fit_and_insert(
@@ -156,6 +170,7 @@ def _fit_and_insert(
     color: tuple[float, float, float],
     align: int,
     lineheight: float = 1.18,
+    fallback_font: str = "helv",
 ) -> tuple[float, float]:
     """Fit text into rect adjusting font size dynamically to avoid overflow or huge white space.
     Returns (used_size, spare_space).
@@ -182,7 +197,7 @@ def _fit_and_insert(
     ]
     
     for sz in candidates:
-        spare = _insert(page, box, norm_text, fontname, sz, color, align, lineheight)
+        spare = _insert(page, box, norm_text, fontname, sz, color, align, lineheight, fallback_font=fallback_font)
         if spare >= 0:
             return sz, spare
         # Clear partial attempt before trying next size
@@ -194,7 +209,7 @@ def _fit_and_insert(
         )
 
     # Final attempt with smallest readable size
-    spare = _insert(page, box, norm_text, fontname, candidates[-1], color, align, lineheight)
+    spare = _insert(page, box, norm_text, fontname, candidates[-1], color, align, lineheight, fallback_font=fallback_font)
     return candidates[-1], spare
 
 
@@ -240,6 +255,7 @@ def rebuild_pdf(
             if rect.is_empty or rect.width < 4 or rect.height < 4:
                 continue
             fontname, reused = resolver.resolve(block)
+            fallback_font = resolver.fallback_for(block)
             if reused:
                 report.fonts_reused += 1
             else:
@@ -251,7 +267,7 @@ def rebuild_pdf(
             align = ALIGN_MAP.get(block.align, fitz.TEXT_ALIGN_LEFT)
             text = block.new_text
 
-            used_size, spare = _fit_and_insert(page, rect, text, fontname, size, color, align)
+            used_size, spare = _fit_and_insert(page, rect, text, fontname, size, color, align, fallback_font=fallback_font)
             if used_size < size:
                 report.overflow_fixes.append(
                     PageFix(block.id, "shrunk", size, used_size, f"{round((1 - used_size / size) * 100)}% font fitted")
@@ -260,7 +276,7 @@ def rebuild_pdf(
                 max_chars = max(20, int(len(text) * 0.82))
                 shorter_text = shorter(block, max_chars)
                 if shorter_text and len(shorter_text) < len(text):
-                    used_size, spare = _fit_and_insert(page, rect, shorter_text, fontname, size, color, align)
+                    used_size, spare = _fit_and_insert(page, rect, shorter_text, fontname, size, color, align, fallback_font=fallback_font)
                     if spare >= 0:
                         block.new_text = shorter_text
                         report.overflow_fixes.append(
