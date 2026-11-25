@@ -23,6 +23,10 @@ type Usage = {
   pagesUsed: number;
   pagesPerMonth: number;
   pagesRemaining: number;
+  maxCheckPages?: number;
+  maxUploads?: number;
+  uploadsUsed?: number;
+  uploadsRemaining?: number;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
 };
@@ -38,9 +42,9 @@ const TIERS: Tier[] = [
     blurb: "For trying it out on a short paper.",
     features: [
       "20 pages a month",
+      "Up to 2 document uploads",
+      "Max 10 pages per plagiarism check",
       "PDF, DOCX, PPTX, Markdown",
-      "HD Plagiarism similarity & AI preview",
-      "Block locking & QA report",
       "Auto-delete after processing",
     ],
   },
@@ -52,10 +56,10 @@ const TIERS: Tier[] = [
     blurb: "For a thesis chapter or a weekly report.",
     features: [
       "100 pages a month",
-      "HD Plagiarism Check engine",
+      "Up to 15 uploads a month",
+      "Max 30 pages per plagiarism check",
       "Auto-humanize to <10% HD Safe",
-      "Priority queue & preview",
-      "Email support",
+      "Priority queue & email support",
     ],
   },
   {
@@ -66,10 +70,10 @@ const TIERS: Tier[] = [
     blurb: "For teams that rewrite every week.",
     features: [
       "500 pages a month",
-      "HD Plagiarism Extreme AI & Similarity",
+      "Up to 50 uploads a month",
+      "Max 60 pages per plagiarism check",
       "0% AI & <5% Plagiarism Guarantee",
       "UGC & University Compliance Report",
-      "Bulk page ranges & glossary",
     ],
   },
   {
@@ -80,10 +84,10 @@ const TIERS: Tier[] = [
     blurb: "For agencies and research groups.",
     features: [
       "2,000 pages a month",
-      "Unlimited HD Plagiarism deep scans",
+      "Up to 200 uploads a month",
+      "Max 100 pages per plagiarism check",
       "Dedicated journal database pool",
-      "Highest priority & SLA",
-      "Custom retention window",
+      "Highest priority & custom retention",
     ],
   },
 ];
@@ -232,6 +236,9 @@ function PricingContent() {
                 <p className="text-sm font-medium capitalize">{usage.tier} plan</p>
                 <p className="text-xs text-muted-foreground">
                   {usage.pagesUsed.toLocaleString()} of {usage.pagesPerMonth.toLocaleString()} pages used this period
+                  {usage.maxUploads !== undefined
+                    ? ` · ${usage.uploadsUsed ?? 0} of ${usage.maxUploads >= 10000 ? "Unlimited" : usage.maxUploads} uploads`
+                    : ""}
                   {usage.currentPeriodEnd ? ` · renews ${new Date(usage.currentPeriodEnd).toLocaleDateString()}` : ""}
                 </p>
               </div>

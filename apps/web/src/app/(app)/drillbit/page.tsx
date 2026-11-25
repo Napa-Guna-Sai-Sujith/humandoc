@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import Link from "next/link";
+import React, { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -69,6 +70,29 @@ export default function DrillbitPlagiarismPage() {
   const [activeTab, setActiveTab] = useState<"report" | "sources" | "text">("report");
   const [copied, setCopied] = useState(false);
 
+  // Plan Quota State
+  type QuotaState = {
+    tier: string;
+    pagesPerMonth: number;
+    pagesUsed: number;
+    pagesRemaining: number;
+    maxCheckPages: number;
+    maxUploads: number;
+    uploadsUsed: number;
+    uploadsRemaining: number;
+  };
+  const [quota, setQuota] = useState<QuotaState | null>(null);
+
+  useEffect(() => {
+    api
+      .get<QuotaState>("/api/billing/usage")
+      .then(setQuota)
+      .catch(() => setQuota(null));
+  }, []);
+
+  const maxCheckPages = quota?.maxCheckPages ?? 10;
+  const currentTierLabel = (quota?.tier || "free").toUpperCase();
+
   const extractPdfClient = async (file: File): Promise<{ text: string; pages: number }> => {
     const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
     if (!pdfjs.GlobalWorkerOptions.workerSrc) {
@@ -92,10 +116,23 @@ export default function DrillbitPlagiarismPage() {
     return { text: fullText.trim(), pages: pdf.numPages };
   };
 
-  // Handle File Upload with 100-Page Limit Validation
+  // Handle File Upload with Plan-Based Page & Upload Limit Validation
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (quota && quota.uploadsRemaining <= 0) {
+      setPageError(
+        `Upload limit reached (${quota.uploadsUsed}/${quota.maxUploads} uploads used on the ${quota.tier} plan). Upgrade your plan to upload more documents.`,
+      );
+      toast({
+        title: "Upload Limit Reached",
+        description: `Your ${quota.tier} plan allows up to ${quota.maxUploads} uploads. Upgrade to continue.`,
+        variant: "error",
+      });
+      e.target.value = "";
+      return;
+    }
 
     setFileLoading(true);
     setPageError(null);
@@ -110,11 +147,13 @@ export default function DrillbitPlagiarismPage() {
         const rawText = (await file.text()).trim();
         const words = rawText ? rawText.split(/\s+/).length : 0;
         const pages = Math.max(1, Math.ceil(words / 350));
-        if (pages > 100) {
-          setPageError(`Document exceeds 100-page limit (~${pages} pages found). Maximum allowed is 100 pages.`);
+        if (pages > maxCheckPages) {
+          setPageError(
+            `Document exceeds your ${quota?.tier || "free"} plan limit of ${maxCheckPages} pages per check (~${pages} pages found). Upgrade your plan for up to 100 pages.`,
+          );
           toast({
-            title: "Exceeds 100-Page Limit",
-            description: `This document contains ~${pages} pages. Maximum allowed is 100 pages.`,
+            title: `${maxCheckPages}-Page Plan Limit Exceeded`,
+            description: `This document contains ~${pages} pages. Your ${quota?.tier || "free"} plan allows ${maxCheckPages} pages per check.`,
             variant: "error",
           });
           setFileLoading(false);
@@ -141,11 +180,13 @@ export default function DrillbitPlagiarismPage() {
     if (ext === "pdf") {
       try {
         const { text: rawText, pages } = await extractPdfClient(file);
-        if (pages > 100) {
-          setPageError(`Document exceeds 100-page limit (${pages} pages found). Maximum allowed is 100 pages.`);
+        if (pages > maxCheckPages) {
+          setPageError(
+            `Document exceeds your ${quota?.tier || "free"} plan limit of ${maxCheckPages} pages per check (${pages} pages found). Upgrade your plan for up to 100 pages.`,
+          );
           toast({
-            title: "Exceeds 100-Page Limit",
-            description: `This document contains ${pages} pages. Maximum allowed is 100 pages.`,
+            title: `${maxCheckPages}-Page Plan Limit Exceeded`,
+            description: `This document contains ${pages} pages. Your ${quota?.tier || "free"} plan allows ${maxCheckPages} pages per check.`,
             variant: "error",
           });
           setFileLoading(false);
@@ -162,7 +203,7 @@ export default function DrillbitPlagiarismPage() {
 
         toast({
           title: "Document Loaded Successfully",
-          description: `${file.name} · ${pages} page(s) (within 100-page limit) · ${words.toLocaleString()} words extracted`,
+          description: `${file.name} · ${pages} page(s) (within ${maxCheckPages}-page plan limit) · ${words.toLocaleString()} words extracted`,
           variant: "success",
         });
         setFileLoading(false);
@@ -227,11 +268,13 @@ export default function DrillbitPlagiarismPage() {
         return;
       }
 
-      if (data.pages > 100) {
-        setPageError(`Document exceeds 100-page limit (${data.pages} pages found). Maximum allowed is 100 pages.`);
+      if (data.pages > maxCheckPages) {
+        setPageError(
+          `Document exceeds your ${quota?.tier || "free"} plan limit of ${maxCheckPages} pages per check (${data.pages} pages found). Upgrade your plan for up to 100 pages.`,
+        );
         toast({
-          title: "Exceeds 100-Page Limit",
-          description: `This document contains ${data.pages} pages. Maximum allowed is 100 pages.`,
+          title: `${maxCheckPages}-Page Plan Limit Exceeded`,
+          description: `This document contains ${data.pages} pages. Your ${quota?.tier || "free"} plan allows ${maxCheckPages} pages per check.`,
           variant: "error",
         });
         return;
@@ -244,7 +287,7 @@ export default function DrillbitPlagiarismPage() {
 
       toast({
         title: "Document Loaded Successfully",
-        description: `${file.name} · ${data.pages} page(s) (within 100-page limit) · ${data.wordCount.toLocaleString()} words`,
+        description: `${file.name} · ${data.pages} page(s) (within ${maxCheckPages}-page plan limit) · ${data.wordCount.toLocaleString()} words`,
         variant: "success",
       });
     } catch {
@@ -274,23 +317,44 @@ export default function DrillbitPlagiarismPage() {
       return;
     }
 
+    const pagesToCheck = uploadedPages ?? Math.max(1, Math.ceil(text.trim().split(/\s+/).length / 350));
+    if (quota && quota.uploadsRemaining <= 0) {
+      const msg = `Upload limit reached (${quota.uploadsUsed}/${quota.maxUploads} uploads used on the ${quota.tier} plan). Upgrade your plan to run more checks.`;
+      setPageError(msg);
+      toast({ title: "Upload Limit Reached", description: msg, variant: "error" });
+      return;
+    }
+    if (pagesToCheck > maxCheckPages) {
+      const msg = `Your ${quota?.tier || "free"} plan supports up to ${maxCheckPages} pages per check (this document has ${pagesToCheck} pages). Upgrade your plan for higher limits.`;
+      setPageError(msg);
+      toast({ title: "Plan Page Limit Exceeded", description: msg, variant: "error" });
+      return;
+    }
+
     setAnalyzing(true);
     try {
-      const res = await api.post<{ ok: boolean; report: DrillbitReport }>("/api/drillbit/check", {
+      const res = await api.post<{ ok: boolean; report: DrillbitReport; quota?: QuotaState }>("/api/drillbit/check", {
         text,
         title: docTitle,
+        pageCount: pagesToCheck,
         filters: { excludeQuotes, excludeBibliography, excludeSmallMatches },
       });
       setReport(res.report);
+      if (res.quota) setQuota(res.quota);
+      setPageError(null);
       toast({
         title: "HD Plagiarism Check Complete",
         description: `Similarity Score: ${res.report.similarityScore}% · AI Content: ${res.report.aiScore}%`,
         variant: res.report.similarityScore <= 10 ? "success" : "default",
       });
     } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Could not analyze document.";
+      if (err instanceof ApiError && err.status === 402) {
+        setPageError(msg);
+      }
       toast({
         title: "Analysis Failed",
-        description: err instanceof ApiError ? err.message : "Could not analyze document.",
+        description: msg,
         variant: "error",
       });
     } finally {
@@ -423,7 +487,7 @@ export default function DrillbitPlagiarismPage() {
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight">HD Plagiarism &amp; AI Analysis</h1>
             <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
-              HD Plagiarism Engine · Max 100 Pages
+              {currentTierLabel} Plan · Max {maxCheckPages} Pages / Check
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -462,6 +526,39 @@ export default function DrillbitPlagiarismPage() {
         </div>
       </div>
 
+      {/* Plan Quota Summary Bar */}
+      {quota ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 text-xs shadow-xs">
+          <div className="flex flex-wrap items-center gap-3">
+            <Badge variant="secondary" className="capitalize font-semibold">
+              {quota.tier} Plan
+            </Badge>
+            <span className="text-muted-foreground">
+              Uploads:{" "}
+              <strong className={cn("text-foreground", quota.uploadsRemaining <= 0 && "text-destructive")}>
+                {quota.uploadsUsed} / {quota.maxUploads >= 10000 ? "Unlimited" : quota.maxUploads}
+              </strong>
+            </span>
+            <span>·</span>
+            <span className="text-muted-foreground">
+              Pages left:{" "}
+              <strong className={cn("text-foreground", quota.pagesRemaining <= 0 && "text-destructive")}>
+                {quota.pagesRemaining.toLocaleString()} / {quota.pagesPerMonth.toLocaleString()}
+              </strong>
+            </span>
+            <span>·</span>
+            <span className="text-muted-foreground">
+              Max per check: <strong className="text-foreground">{maxCheckPages} pages</strong>
+            </span>
+          </div>
+          {quota.tier !== "studio" && quota.tier !== "enterprise" && quota.pagesPerMonth < 10000 ? (
+            <Button size="sm" variant="outline" className="h-7 text-xs" asChild>
+              <Link href="/pricing">Upgrade Plan</Link>
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* Main Document Input Card */}
       <Card>
         <CardHeader className="pb-3">
@@ -495,8 +592,8 @@ export default function DrillbitPlagiarismPage() {
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="font-medium text-foreground">{wordCount.toLocaleString()} words</span>
               <span>·</span>
-              <span className={cn("font-medium", computedPages > 100 ? "text-destructive font-bold" : "text-foreground")}>
-                {computedPages} / 100 page(s)
+              <span className={cn("font-medium", computedPages > maxCheckPages ? "text-destructive font-bold" : "text-foreground")}>
+                {computedPages} / {maxCheckPages} page(s)
               </span>
             </div>
           </div>
@@ -508,11 +605,18 @@ export default function DrillbitPlagiarismPage() {
             <Alert variant="destructive">
               <ShieldAlert className="h-4 w-4" />
               <AlertTitle>
-                {pageError.includes("100-page") || pageError.includes("100 pages") || pageError.includes("exceeds 100")
-                  ? "100-Page Limit Exceeded"
-                  : "Upload Error"}
+                {pageError.includes("Upload limit")
+                  ? "Upload Limit Reached"
+                  : pageError.includes("plan limit") || pageError.includes("page quota") || pageError.includes("exceeds")
+                    ? "Plan Limit Exceeded"
+                    : "Upload Error"}
               </AlertTitle>
-              <AlertDescription className="text-xs">{pageError}</AlertDescription>
+              <AlertDescription className="text-xs flex flex-wrap items-center justify-between gap-2">
+                <span>{pageError}</span>
+                <Button size="sm" variant="outline" className="h-7 bg-background text-foreground" asChild>
+                  <Link href="/pricing">Upgrade Plan</Link>
+                </Button>
+              </AlertDescription>
             </Alert>
           ) : null}
 
@@ -528,7 +632,7 @@ export default function DrillbitPlagiarismPage() {
                     <div>
                       <p className="font-semibold text-foreground text-sm">{uploadedFileName}</p>
                       <p className="text-muted-foreground">
-                        {uploadedPages} page(s) (under 100-page max) · {wordCount.toLocaleString()} words extracted
+                        {uploadedPages} page(s) (under {maxCheckPages}-page plan max) · {wordCount.toLocaleString()} words extracted
                       </p>
                     </div>
                   </div>
@@ -558,7 +662,7 @@ export default function DrillbitPlagiarismPage() {
                     <div className="space-y-2">
                       <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
                       <p className="text-sm font-medium">Extracting document pages and counting words...</p>
-                      <p className="text-xs text-muted-foreground">Verifying 100-page maximum limit...</p>
+                      <p className="text-xs text-muted-foreground">Verifying {maxCheckPages}-page plan limit...</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -569,7 +673,9 @@ export default function DrillbitPlagiarismPage() {
                         Click to upload your Document (.PDF, .DOCX, .DOC, .TXT, .MD)
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Maximum limit: <strong className="text-foreground">100 pages</strong> per check. Fully extracts text and structure.
+                        Your <strong className="text-foreground capitalize">{quota?.tier || "free"}</strong> plan limit:{" "}
+                        <strong className="text-foreground">{maxCheckPages} pages</strong> per check
+                        {quota ? ` · ${quota.uploadsRemaining} of ${quota.maxUploads >= 10000 ? "Unlimited" : quota.maxUploads} uploads left` : ""}.
                       </p>
                       <div className="pt-2">
                         <span className="inline-block text-[11px] bg-muted px-3 py-1 rounded-full text-muted-foreground border">

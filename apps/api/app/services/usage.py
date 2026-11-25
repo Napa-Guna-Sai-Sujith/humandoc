@@ -3,11 +3,56 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models import Subscription, UsageRecord
+from app.models import AuditLog, Subscription, Upload, UsageRecord
+
+
+TIER_MAX_UPLOADS = {
+    "free": 2,
+    "starter": 15,
+    "pro": 50,
+    "studio": 200,
+    "enterprise": 10000,
+}
+
+
+def max_uploads_for_tier(tier: str, pages_per_month: int, role: str | None = None) -> int:
+    if role == "admin" or pages_per_month >= 10000:
+        return 10000
+    return TIER_MAX_UPLOADS.get((tier or "free").lower(), 2)
+
+
+async def uploads_used(db: AsyncSession, user_id, period: str | None = None) -> int:
+    period = period or current_period()
+    job_uploads = await db.scalar(
+        select(func.count(Upload.id)).where(
+            Upload.user_id == user_id,
+            text("to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM') = :p").bindparams(p=period),
+        )
+    )
+    check_uploads = await db.scalar(
+        select(func.count(AuditLog.id)).where(
+            AuditLog.user_id == user_id,
+            AuditLog.action == "drillbit.checked",
+            text("to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM') = :p").bindparams(p=period),
+        )
+    )
+    return int(job_uploads or 0) + int(check_uploads or 0)
+
+
+async def check_upload_quota(db: AsyncSession, user_id, role: str | None = None) -> tuple[bool, dict]:
+    entitlement = await get_entitlement(db, user_id)
+    used = await uploads_used(db, user_id)
+    limit = max_uploads_for_tier(entitlement["tier"], entitlement["pages_per_month"], role)
+    return used < limit, {
+        **entitlement,
+        "uploads_used": used,
+        "max_uploads": limit,
+        "uploads_remaining": max(0, limit - used),
+    }
 
 
 def current_period(now: dt.datetime | None = None) -> str:

@@ -26,6 +26,7 @@ from app.core.storage import (
 )
 from app.models import Job, Upload
 from app.schemas import UploadCompleteRequest, UploadInitRequest
+from app.services import usage as usage_service
 
 router = APIRouter(prefix="/uploads", tags=["uploads"], dependencies=[Depends(require_csrf)])
 part_router = APIRouter(prefix="/uploads", tags=["uploads"])
@@ -38,6 +39,13 @@ def _part_sig(upload_id: str, part_number: int) -> str:
 
 @router.post("/init")
 async def init_upload(payload: UploadInitRequest, user: CurrentUser, db: DbSession) -> dict:
+    allowed_upload, upload_quota = await usage_service.check_upload_quota(db, user.id, getattr(user, "role", None))
+    if not allowed_upload:
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            f"Upload limit reached ({upload_quota['uploads_used']}/{upload_quota['max_uploads']} uploads used on the {upload_quota['tier']} plan). Upgrade your plan to upload more documents.",
+        )
+
     max_bytes = settings.max_upload_mb * 1024 * 1024
     if payload.size > max_bytes:
         raise HTTPException(
