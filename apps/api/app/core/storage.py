@@ -131,12 +131,64 @@ def presign_part(key: str, upload_id: str, part_number: int) -> str:
         return f"/backend/uploads/{upload_id}/parts/{part_number}"
 
 
+def _db_put_file(key: str, data: bytes, content_type: str = "application/octet-stream") -> None:
+    try:
+        from sqlalchemy import text
+
+        eng = _sync_engine()
+        with eng.begin() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO stored_files (key, content, content_type, size, created_at)
+                    VALUES (:key, :content, :content_type, :size, NOW())
+                    ON CONFLICT (key) DO UPDATE
+                    SET content = EXCLUDED.content,
+                        content_type = EXCLUDED.content_type,
+                        size = EXCLUDED.size,
+                        created_at = NOW()
+                """),
+                {"key": key, "content": data, "content_type": content_type, "size": len(data)},
+            )
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("stored_files put failed for %s: %s", key, exc)
+
+
+def _db_get_file(key: str) -> bytes | None:
+    try:
+        from sqlalchemy import text
+
+        eng = _sync_engine()
+        with eng.connect() as conn:
+            r = conn.execute(text("SELECT content FROM stored_files WHERE key = :key"), {"key": key}).first()
+            if r and r[0]:
+                return bytes(r[0])
+    except Exception as exc:
+        import logging
+
+        logging.getLogger(__name__).warning("stored_files get failed for %s: %s", key, exc)
+    return None
+
+
+def _db_delete_prefix(prefix: str) -> None:
+    try:
+        from sqlalchemy import text
+
+        eng = _sync_engine()
+        with eng.begin() as conn:
+            conn.execute(text("DELETE FROM stored_files WHERE key LIKE :prefix || '%'"), {"prefix": prefix})
+    except Exception:
+        pass
+
+
 def upload_part_bytes(key: str, upload_id: str, part_number: int, data: bytes) -> str:
     if upload_id.startswith("local-"):
         part_dir = _PARTS_DIR / upload_id
         part_dir.mkdir(parents=True, exist_ok=True)
         part_file = part_dir / f"part_{part_number}"
         part_file.write_bytes(data)
+        _db_put_file(f"__parts/{upload_id}/part_{part_number}", data)
         etag = hashlib.md5(data).hexdigest()
         return f'"{etag}"'
     try:
@@ -153,44 +205,35 @@ def upload_part_bytes(key: str, upload_id: str, part_number: int, data: bytes) -
         part_dir.mkdir(parents=True, exist_ok=True)
         part_file = part_dir / f"part_{part_number}"
         part_file.write_bytes(data)
+        _db_put_file(f"__parts/{upload_id}/part_{part_number}", data)
         etag = hashlib.md5(data).hexdigest()
         return f'"{etag}"'
+
+
+def _assemble_local_parts(key: str, upload_id: str, ordered: list[dict[str, Any]]) -> dict[str, Any]:
+    dest_file = _local_path(key)
+    hasher = hashlib.md5()
+    with open(dest_file, "wb") as out:
+        for p in ordered:
+            part_num = p["part_number"]
+            p_file = _PARTS_DIR / upload_id / f"part_{part_num}"
+            chunk = p_file.read_bytes() if p_file.exists() else _db_get_file(f"__parts/{upload_id}/part_{part_num}")
+            if chunk:
+                out.write(chunk)
+                hasher.update(chunk)
+    shutil.rmtree(_PARTS_DIR / upload_id, ignore_errors=True)
+    _db_delete_prefix(f"__parts/{upload_id}/")
+    mime, _ = mimetypes.guess_type(dest_file.name)
+    mime = mime or "application/octet-stream"
+    content = dest_file.read_bytes()
+    _db_put_file(key, content, mime)
+    return {"key": key, "etag": f'"{hasher.hexdigest()}"'}
 
 
 def complete_multipart(key: str, upload_id: str, parts: list[dict[str, Any]]) -> dict[str, Any]:
     ordered = sorted(parts, key=lambda p: int(p["part_number"]))
     if upload_id.startswith("local-"):
-        dest_file = _local_path(key)
-        hasher = hashlib.md5()
-        with open(dest_file, "wb") as out:
-            for p in ordered:
-                p_file = _PARTS_DIR / upload_id / f"part_{p['part_number']}"
-                if p_file.exists():
-                    chunk = p_file.read_bytes()
-                    out.write(chunk)
-                    hasher.update(chunk)
-        shutil.rmtree(_PARTS_DIR / upload_id, ignore_errors=True)
-        try:
-            from sqlalchemy import text
-            mime, _ = mimetypes.guess_type(dest_file.name)
-            mime = mime or "application/octet-stream"
-            content = dest_file.read_bytes()
-            eng = _sync_engine()
-            with eng.begin() as conn:
-                conn.execute(
-                    text("""
-                        INSERT INTO stored_files (key, content, content_type, size)
-                        VALUES (:key, :content, :content_type, :size)
-                        ON CONFLICT (key) DO UPDATE
-                        SET content = EXCLUDED.content,
-                            content_type = EXCLUDED.content_type,
-                            size = EXCLUDED.size
-                    """),
-                    {"key": key, "content": content, "content_type": mime, "size": len(content)},
-                )
-        except Exception:
-            pass
-        return {"key": key, "etag": f'"{hasher.hexdigest()}"'}
+        return _assemble_local_parts(key, upload_id, ordered)
 
     try:
         response = _s3.complete_multipart_upload(
@@ -201,37 +244,7 @@ def complete_multipart(key: str, upload_id: str, parts: list[dict[str, Any]]) ->
         )
         return {"key": response.get("Key", key), "etag": response.get("ETag")}
     except Exception:
-        dest_file = _local_path(key)
-        hasher = hashlib.md5()
-        with open(dest_file, "wb") as out:
-            for p in ordered:
-                p_file = _PARTS_DIR / upload_id / f"part_{p['part_number']}"
-                if p_file.exists():
-                    chunk = p_file.read_bytes()
-                    out.write(chunk)
-                    hasher.update(chunk)
-        shutil.rmtree(_PARTS_DIR / upload_id, ignore_errors=True)
-        try:
-            from sqlalchemy import text
-            mime, _ = mimetypes.guess_type(dest_file.name)
-            mime = mime or "application/octet-stream"
-            content = dest_file.read_bytes()
-            eng = _sync_engine()
-            with eng.begin() as conn:
-                conn.execute(
-                    text("""
-                        INSERT INTO stored_files (key, content, content_type, size)
-                        VALUES (:key, :content, :content_type, :size)
-                        ON CONFLICT (key) DO UPDATE
-                        SET content = EXCLUDED.content,
-                            content_type = EXCLUDED.content_type,
-                            size = EXCLUDED.size
-                    """),
-                    {"key": key, "content": content, "content_type": mime, "size": len(content)},
-                )
-        except Exception:
-            pass
-        return {"key": key, "etag": f'"{hasher.hexdigest()}"'}
+        return _assemble_local_parts(key, upload_id, ordered)
 
 
 def abort_multipart(key: str, upload_id: str) -> None:
@@ -259,25 +272,7 @@ def head(key: str) -> dict[str, Any]:
 def put_bytes(key: str, data: bytes, content_type: str = "application/octet-stream") -> None:
     dest = _local_path(key)
     dest.write_bytes(data)
-    try:
-        from sqlalchemy import text
-        eng = _sync_engine()
-        with eng.begin() as conn:
-            conn.execute(
-                text("""
-                    INSERT INTO stored_files (key, content, content_type, size, created_at)
-                    VALUES (:key, :content, :content_type, :size, NOW())
-                    ON CONFLICT (key) DO UPDATE
-                    SET content = EXCLUDED.content,
-                        content_type = EXCLUDED.content_type,
-                        size = EXCLUDED.size,
-                        created_at = NOW()
-                """),
-                {"key": key, "content": data, "content_type": content_type, "size": len(data)},
-            )
-    except Exception as exc:
-        import logging
-        logging.getLogger(__name__).warning("stored_files put_bytes failed for %s: %s", key, exc)
+    _db_put_file(key, data, content_type)
     try:
         _s3.put_object(
             Bucket=settings.s3_bucket,
@@ -294,27 +289,22 @@ def get_bytes(key: str) -> bytes:
     dest = _local_path(key)
     if dest.exists():
         return dest.read_bytes()
-    try:
-        from sqlalchemy import text
-        eng = _sync_engine()
-        with eng.connect() as conn:
-            r = conn.execute(text("SELECT content FROM stored_files WHERE key = :key"), {"key": key}).first()
-            if r and r[0]:
-                data = bytes(r[0])
-                try:
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    dest.write_bytes(data)
-                except Exception:
-                    pass
-                return data
-    except Exception:
-        pass
+    data = _db_get_file(key)
+    if data is not None:
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(data)
+        except Exception:
+            pass
+        return data
+    if "localhost" in (settings.s3_endpoint_url or "") and settings.environment == "production":
+        raise FileNotFoundError(f"File '{key}' was not found in storage. Please re-upload your document and try again.")
     try:
         return _s3.get_object(Bucket=settings.s3_bucket, Key=key)["Body"].read()
-    except Exception:
+    except Exception as exc:
         if dest.exists():
             return dest.read_bytes()
-        raise
+        raise FileNotFoundError(f"File '{key}' was not found in storage. Please re-upload your document and try again.") from exc
 
 
 def delete(key: str) -> None:
