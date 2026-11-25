@@ -223,14 +223,16 @@ def _fit_and_insert(
     base_size: float,
     color: tuple[float, float, float],
     align: int,
-    lineheight: float = 1.18,
+    lineheight: float = 1.08,
     fallback_font: str = "helv",
     font_obj: fitz.Font | None = None,
 ) -> tuple[float, float]:
-    """Fit text into rect adjusting font size dynamically in memory before inserting once."""
+    """Fit text into rect adjusting font size dynamically in memory before inserting once.
+    Guarantees text is drawn (never silently dropped by PyMuPDF overflow).
+    """
     norm_text = " ".join(text.split()) if "\n" in text and len(text) > 40 else text.strip()
 
-    v_pad = max(4.0, base_size * 0.35)
+    v_pad = max(5.0, base_size * 0.45)
     page_w = page.rect.width
     r_x1 = max(rect.x1 + 4.0, page_w - 60.0 if rect.x1 > page_w * 0.72 else rect.x1 + 4.0)
     box = fitz.Rect(rect.x0, rect.y0 - 0.5, r_x1, rect.y1 + v_pad)
@@ -241,8 +243,10 @@ def _fit_and_insert(
         base_size * 0.92,
         base_size * 0.86,
         base_size * 0.80,
-        base_size * 0.75,
-        7.5,
+        base_size * 0.74,
+        7.0,
+        6.4,
+        5.8,
     ]
 
     chosen = candidates[-1]
@@ -252,17 +256,16 @@ def _fit_and_insert(
             break
 
     spare = _insert(page, box, norm_text, fontname, chosen, color, align, lineheight, fallback_font=fallback_font)
-    if spare < 0 and chosen > candidates[-1]:
-        # Single fast retry at smallest readable size only if PyMuPDF's exact glyph kerning overflowed
-        page.add_redact_annot(box + (-1, -1, 1, 1), fill=False, text="")
-        page.apply_redactions(
-            images=fitz.PDF_REDACT_IMAGE_NONE,
-            graphics=fitz.PDF_REDACT_LINE_ART_NONE,
-            text=fitz.PDF_REDACT_TEXT_REMOVE,
-        )
-        spare = _insert(page, box, norm_text, fontname, candidates[-1], color, align, lineheight, fallback_font=fallback_font)
-        return candidates[-1], spare
-    return chosen, spare
+    if spare >= 0:
+        return chosen, spare
+
+    # PyMuPDF insert_textbox draws nothing when spare < 0 — step down size & leading until it draws
+    for sz, lh, extra_h in ((min(chosen * 0.88, 7.2), 1.04, 2.0), (6.4, 1.0, 4.0), (5.5, 1.0, 8.0)):
+        retry_box = fitz.Rect(box.x0, box.y0, box.x1, box.y1 + extra_h)
+        spare = _insert(page, retry_box, norm_text, fontname, sz, color, align, lh, fallback_font=fallback_font)
+        if spare >= 0:
+            return sz, spare
+    return 5.5, spare
 
 
 def rebuild_pdf(
@@ -331,12 +334,28 @@ def rebuild_pdf(
                 max_chars = max(20, int(len(text) * 0.82))
                 shorter_text = shorter(block, max_chars)
                 if shorter_text and len(shorter_text) < len(text):
-                    used_size, spare = _fit_and_insert(page, rect, shorter_text, fontname, size, color, align, fallback_font=fallback_font)
+                    if spare >= 0:
+                        page.add_redact_annot(rect + (-1, -1, 1, 1), fill=False, text="")
+                        page.apply_redactions(
+                            images=fitz.PDF_REDACT_IMAGE_NONE,
+                            graphics=fitz.PDF_REDACT_LINE_ART_NONE,
+                            text=fitz.PDF_REDACT_TEXT_REMOVE,
+                        )
+                    used_size, spare = _fit_and_insert(
+                        page, rect, shorter_text, fontname, size, color, align, fallback_font=fallback_font, font_obj=font_obj
+                    )
                     if spare >= 0:
                         block.new_text = shorter_text
                         report.overflow_fixes.append(
                             PageFix(block.id, "shortened", size, used_size, f"{len(text)}→{len(shorter_text)} chars")
                         )
+            if spare < 0:
+                # Never leave a redacted block blank: fall back to original text so content is preserved
+                _fit_and_insert(
+                    page, rect, block.text, fontname, size, color, align, fallback_font=fallback_font, font_obj=font_obj
+                )
+                block.new_text = block.text
+                report.overflow_fixes.append(PageFix(block.id, "kept-original", size, size, "preserved to prevent blank block"))
             report.rewritten_blocks += 1
 
     doc.save(dst, garbage=2, deflate=True, clean=False)
