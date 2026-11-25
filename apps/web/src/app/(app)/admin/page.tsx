@@ -5,12 +5,16 @@ import React from "react";
 import {
   AlertTriangle,
   Award,
+  Bell,
+  BellRing,
   Check,
   CreditCard,
   Download,
   Edit,
   Key,
   Loader2,
+  Mail,
+  Phone,
   Play,
   RotateCcw,
   ShieldCheck,
@@ -87,6 +91,10 @@ export default function AdminPage() {
   const [editUser, setEditUser] = React.useState<AdminUser | null>(null);
   const [deleteUserTarget, setDeleteUserTarget] = React.useState<AdminUser | null>(null);
   const [deleteJobTarget, setDeleteJobTarget] = React.useState<AdminJob | null>(null);
+  const [alertRequestTarget, setAlertRequestTarget] = React.useState<{
+    user: AdminUser | null;
+    requests: Audit[];
+  } | null>(null);
 
   // Plan Form State
   const [planTier, setPlanTier] = React.useState("starter");
@@ -140,11 +148,35 @@ export default function AdminPage() {
     void load();
   }, [load]);
 
+  const allPlanRequests = React.useMemo(
+    () => (audit || []).filter((log) => log.action === "billing.plan_requested"),
+    [audit],
+  );
+
+  const planRequestsByUser = React.useMemo(() => {
+    const map = new Map<string, Audit[]>();
+    for (const log of allPlanRequests) {
+      if (!log.user_id) continue;
+      const existing = map.get(log.user_id) || [];
+      existing.push(log);
+      map.set(log.user_id, existing);
+    }
+    return map;
+  }, [allPlanRequests]);
+
   // Open Plan Modal
-  const openPlanModal = (user: AdminUser) => {
+  const openPlanModal = (user: AdminUser, suggestedTier?: string) => {
+    const tierToUse = suggestedTier || user.tier || "starter";
+    const tierDefaults: Record<string, number> = {
+      free: 20,
+      starter: 100,
+      pro: 500,
+      studio: 2000,
+      enterprise: 10000,
+    };
     setPlanUser(user);
-    setPlanTier(user.tier || "starter");
-    setPlanPages(user.pages_per_month || 100);
+    setPlanTier(tierToUse);
+    setPlanPages(suggestedTier ? tierDefaults[tierToUse] ?? 100 : user.pages_per_month || 100);
     setResetUsage(false);
   };
 
@@ -282,9 +314,39 @@ export default function AdminPage() {
             </p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={load}>
-          Refresh data
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={allPlanRequests.length > 0 ? "default" : "outline"}
+            size="sm"
+            className={
+              allPlanRequests.length > 0
+                ? "gap-1.5 bg-amber-500 text-white hover:bg-amber-600"
+                : "gap-1.5"
+            }
+            onClick={() => setAlertRequestTarget({ user: null, requests: allPlanRequests })}
+            title="View all user plan requests"
+          >
+            {allPlanRequests.length > 0 ? (
+              <BellRing className="h-4 w-4 animate-pulse" />
+            ) : (
+              <Bell className="h-4 w-4" />
+            )}
+            <span>Plan Alerts</span>
+            <Badge
+              variant="secondary"
+              className={
+                allPlanRequests.length > 0
+                  ? "ml-0.5 bg-white/20 text-white"
+                  : "ml-0.5"
+              }
+            >
+              {allPlanRequests.length}
+            </Badge>
+          </Button>
+          <Button variant="outline" size="sm" onClick={load}>
+            Refresh data
+          </Button>
+        </div>
       </div>
 
       {!stats ? (
@@ -342,11 +404,27 @@ export default function AdminPage() {
                       100,
                       Math.round((user.pages_used / Math.max(1, user.pages_per_month)) * 100),
                     );
+                    const userRequests = planRequestsByUser.get(user.id) || [];
                     return (
                       <TableRow key={user.id}>
                         <TableCell>
-                          <p className="text-sm font-semibold">{user.name}</p>
-                          <p className="text-xs text-muted-foreground">{user.email}</p>
+                          <div className="flex items-center gap-2">
+                            <div>
+                              <p className="text-sm font-semibold">{user.name}</p>
+                              <p className="text-xs text-muted-foreground">{user.email}</p>
+                            </div>
+                            {userRequests.length > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => setAlertRequestTarget({ user, requests: userRequests })}
+                                title={`View plan request alert (${userRequests.length})`}
+                                className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 shadow-xs transition-colors hover:bg-amber-100"
+                              >
+                                <BellRing className="h-3.5 w-3.5 text-amber-600" />
+                                <span>Alert ({userRequests.length})</span>
+                              </button>
+                            ) : null}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -816,6 +894,111 @@ export default function AdminPage() {
             <Button variant="destructive" onClick={executeDeleteJob} disabled={busy === "deleting-job"}>
               {busy === "deleting-job" ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
               Delete Job
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* ================= MODAL: PLAN REQUEST ALERT DETAILS ================= */}
+      <Dialog
+        open={Boolean(alertRequestTarget)}
+        onClose={() => setAlertRequestTarget(null)}
+        title={
+          alertRequestTarget?.user
+            ? `Plan Request Alert — ${alertRequestTarget.user.name}`
+            : "All Plan Request Alerts"
+        }
+        description={
+          alertRequestTarget?.user
+            ? `${alertRequestTarget.user.email} · ${alertRequestTarget.requests.length} request(s)`
+            : "Complete details of plan requests submitted by users"
+        }
+      >
+        <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
+          {!alertRequestTarget?.requests.length ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              No plan requests have been submitted yet.
+            </p>
+          ) : (
+            alertRequestTarget.requests.map((req, idx) => {
+              const meta = (req.meta || {}) as Record<string, unknown>;
+              const tier = String(meta.tier || "starter");
+              const tierName = String(meta.tierName || tier);
+              const price = meta.price !== undefined ? `$${meta.price}/mo` : "";
+              const phone = String(meta.phone || "Not provided");
+              const reqName = String(meta.userName || alertRequestTarget.user?.name || "User");
+              const reqEmail = String(meta.userEmail || alertRequestTarget.user?.email || "");
+              const notes = String(meta.notes || "").trim();
+              const matchedUser =
+                alertRequestTarget.user ||
+                (users || []).find((u) => u.id === req.user_id || u.email === reqEmail) ||
+                null;
+
+              return (
+                <div
+                  key={req.id || idx}
+                  className="rounded-lg border border-amber-200 bg-amber-50/60 p-3.5 space-y-2 text-xs"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <BellRing className="h-4 w-4 text-amber-600 shrink-0" />
+                      <span className="font-semibold text-sm text-foreground">
+                        {tierName} Plan {price ? `(${price})` : ""}
+                      </span>
+                      {idx === 0 ? <Badge variant="warning">Latest</Badge> : null}
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">
+                      {formatDateTime(req.created_at)}
+                    </span>
+                  </div>
+
+                  <div className="grid gap-1.5 sm:grid-cols-2 text-foreground pt-1">
+                    <div>
+                      <span className="text-muted-foreground">User:</span>{" "}
+                      <span className="font-medium">{reqName}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <a href={`mailto:${reqEmail}`} className="text-primary underline break-all">
+                        {reqEmail || "—"}
+                      </a>
+                    </div>
+                    <div className="flex items-center gap-1 sm:col-span-2">
+                      <Phone className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      <span className="text-muted-foreground">Mobile:</span>{" "}
+                      <a href={`tel:${phone}`} className="font-semibold text-foreground underline">
+                        {phone}
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="rounded bg-background/80 border px-2.5 py-2">
+                    <span className="text-muted-foreground font-medium">Notes / Requirements: </span>
+                    <span className="text-foreground">{notes || "No additional notes provided."}</span>
+                  </div>
+
+                  {matchedUser ? (
+                    <div className="flex justify-end pt-1">
+                      <Button
+                        size="sm"
+                        className="h-7 gap-1 text-xs"
+                        onClick={() => {
+                          setAlertRequestTarget(null);
+                          openPlanModal(matchedUser, tier);
+                        }}
+                      >
+                        <CreditCard className="h-3.5 w-3.5" />
+                        Assign {tierName} Plan
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })
+          )}
+          <div className="flex justify-end pt-2 border-t">
+            <Button variant="outline" size="sm" onClick={() => setAlertRequestTarget(null)}>
+              Close
             </Button>
           </div>
         </div>
