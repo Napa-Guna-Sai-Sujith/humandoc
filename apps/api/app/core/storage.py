@@ -265,17 +265,19 @@ def put_bytes(key: str, data: bytes, content_type: str = "application/octet-stre
         with eng.begin() as conn:
             conn.execute(
                 text("""
-                    INSERT INTO stored_files (key, content, content_type, size)
-                    VALUES (:key, :content, :content_type, :size)
+                    INSERT INTO stored_files (key, content, content_type, size, created_at)
+                    VALUES (:key, :content, :content_type, :size, NOW())
                     ON CONFLICT (key) DO UPDATE
                     SET content = EXCLUDED.content,
                         content_type = EXCLUDED.content_type,
-                        size = EXCLUDED.size
+                        size = EXCLUDED.size,
+                        created_at = NOW()
                 """),
                 {"key": key, "content": data, "content_type": content_type, "size": len(data)},
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("stored_files put_bytes failed for %s: %s", key, exc)
     try:
         _s3.put_object(
             Bucket=settings.s3_bucket,

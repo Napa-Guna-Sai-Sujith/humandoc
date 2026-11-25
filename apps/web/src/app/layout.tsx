@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 
+import { AutoRefresh } from "@/components/auto-refresh";
 import { Toaster } from "@/components/ui/toast";
 
 import "./globals.css";
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen bg-background font-sans">
+        <AutoRefresh />
         <Toaster>{children}</Toaster>
       </body>
     </html>
