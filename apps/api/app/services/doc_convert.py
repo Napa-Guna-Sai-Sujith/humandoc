@@ -552,7 +552,7 @@ def extract_word_paragraphs(src: bytes | str | Path, filename: str = "") -> tupl
 
     Returns (paragraphs, detected_variant). Raises ValueError on empty or corrupt input.
     """
-    data = src if isinstance(src, (bytes, bytearray)) else Path(src).read_bytes()
+    data = src if isinstance(src, bytes | bytearray) else Path(src).read_bytes()
     variant = sniff_word_variant(bytes(data))
     if variant == "docx":
         paras = _extract_docx_paragraphs(bytes(data))
