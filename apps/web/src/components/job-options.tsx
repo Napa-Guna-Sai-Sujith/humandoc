@@ -27,7 +27,7 @@ export type JobOptionsState = {
 
 export const DEFAULT_OPTIONS: JobOptionsState = {
   style: "professional",
-  strength: "medium",
+  strength: "strong",
   tone: 50,
   language: "auto",
   keepOriginalLanguage: true,

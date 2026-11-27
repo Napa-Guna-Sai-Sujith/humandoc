@@ -73,6 +73,16 @@ def _missing_numbers(original: str, rewritten: str) -> list[str]:
     return [n for n, c in orig.items() if new[n] < c]
 
 
+_COMMON_UPPER_WORDS = {
+    "ON", "OFF", "IN", "TO", "OF", "IS", "AS", "BY", "OR", "AN", "AT", "IT", "BE",
+    "NO", "SO", "UP", "IF", "DO", "GO", "WE", "HE", "ME", "MY", "US", "THE", "AND",
+    "FOR", "NOT", "ARE", "BUT", "ALL", "CAN", "HAS", "HAD", "WAS", "ONE", "OUR", "OUT",
+    "USE", "NEW", "NOW", "WAY", "MAY", "OWN", "SEE", "TWO", "ANY", "ITS", "SET", "END",
+    "TEST", "CASE", "PASS", "FAIL", "HIGH", "LOW", "TRUE", "FALSE", "RESULT", "RESULTS",
+    "ACTUAL", "EXPECTED", "NOTE", "NOTES", "TABLE", "FIGURE", "CHAPTER", "SECTION",
+}
+
+
 def _missing_entities(original: str, rewritten: str) -> list[str]:
     missing: list[str] = []
     n_norm = _norm(rewritten)
@@ -82,6 +92,8 @@ def _missing_entities(original: str, rewritten: str) -> list[str]:
             if _norm(value) not in n_norm:
                 missing.append(value)
     for acronym in set(ACRONYM_RE.findall(original)):
+        if acronym in _COMMON_UPPER_WORDS:
+            continue
         if len(acronym) >= 2 and acronym not in rewritten:
             missing.append(acronym)
     return missing
@@ -112,15 +124,22 @@ COMMON_CAPITALIZED = {
     "provide", "provides", "grant", "grants", "show", "shows", "display", "displays", "reward", "rewards",
     "manage", "manages", "control", "controls", "view", "views", "track", "tracks", "problem", "statement",
     "non-goals", "success", "metrics", "assumptions", "criteria", "standard", "standards", "rule", "rules",
-    "policy", "policies", "quality", "performance", "speed", "pacing", "window", "windows", "target", "targets"
+    "policy", "policies", "quality", "performance", "speed", "pacing", "window", "windows", "target", "targets",
+    "traffic", "management", "emergency", "vehicle", "vehicles", "detection", "signal", "signals",
+    "smart", "intelligent", "based", "using", "design", "implementation", "project", "report", "chapter",
+    "hardware", "software", "module", "modules", "sensor", "sensors", "unit", "units", "board", "network",
+    "data", "monitor", "alert", "alerts", "priority", "mode", "state", "power", "supply",
+    "fixed", "junction", "junctions", "road", "urban", "city", "cities", "noise", "sound", "sounds",
+    "distance", "accuracy", "connectivity", "stable", "normal", "regular", "green", "blue", "red", "clear",
+    "clearance", "information", "direction", "operating", "current", "existing", "proposed"
 }
 
 
 def _missing_proper_nouns(original: str, rewritten: str) -> list[str]:
     n_norm = _norm(rewritten)
     missing = []
-    # Identify sentence starters or list starters to avoid treating them as proper nouns
-    starters = {m.group(1).lower() for m in re.finditer(r"(?:^|[.!?]\s+|\d+\.\s+)([A-Z][a-z]{2,})", original)}
+    # Identify sentence starters or list/table starters to avoid treating them as proper nouns
+    starters = {m.group(1).lower() for m in re.finditer(r"(?:^|[.!?]\s+|\d+\.\s+|\|\s+|:\s+)([A-Z][a-z]{2,})", original)}
     for noun in set(PROPER_NOUN_RE.findall(original)):
         low_noun = _norm(noun)
         if low_noun in starters or low_noun in COMMON_CAPITALIZED or any(w in COMMON_CAPITALIZED for w in low_noun.split()):
