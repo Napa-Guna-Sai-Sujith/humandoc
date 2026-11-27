@@ -36,6 +36,7 @@ from app.services import prompts as prompts_service
 from app.services import usage as usage_service
 from app.services import verify as verify_service
 from app.services.blocks import Block, blocks_from_dicts, blocks_to_dicts
+from app.services.detect import MIME_BY_KIND
 from app.services.glossary import TerminologyMemory, extract_terms
 from app.services.qa import build_report
 from app.services.rewrite import RewriteEngine
@@ -408,7 +409,7 @@ async def _finalize_job(job_id: str) -> None:
         else None
     )
 
-    suffix = {"pdf": ".pdf", "docx": ".docx", "pptx": ".pptx", "txt": ".txt", "md": ".md"}[file_kind]
+    suffix = {"pdf": ".pdf", "docx": ".docx", "doc": ".doc", "pptx": ".pptx", "txt": ".txt", "md": ".md"}[file_kind]
     dst = tmpdir / f"output{suffix}"
 
     rebuild_info: dict[str, Any] = {}
@@ -424,6 +425,8 @@ async def _finalize_job(job_id: str) -> None:
         }
     elif file_kind == "docx":
         rebuild_info = rebuild_docx.rebuild_docx(str(src), str(dst), pages)
+    elif file_kind == "doc":
+        rebuild_info = rebuild_docx.rebuild_doc(str(src), str(dst), pages)
     elif file_kind == "pptx":
         rebuild_info = rebuild_pptx.rebuild_pptx(str(src), str(dst), pages)
     else:
@@ -434,7 +437,8 @@ async def _finalize_job(job_id: str) -> None:
 
     output_name = f"{Path(source_filename).stem}.humanized{suffix}"
     output_key = f"output/{user_id}/{job_id}/{output_name}"
-    put_bytes(output_key, dst.read_bytes(), source_mime)
+    out_mime = MIME_BY_KIND.get(file_kind, source_mime)
+    put_bytes(output_key, dst.read_bytes(), out_mime)
 
     qa_key = f"qa/{user_id}/{job_id}/qa-report.json"
     qa_payload = build_report(job, [blocks_to_dicts(p) for p in pages], rebuild_info, verification, analysis)

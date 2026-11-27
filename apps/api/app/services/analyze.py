@@ -131,7 +131,7 @@ def analyze_file(path: str, kind: str, mime: str, filename: str, options: dict[s
     meta: dict[str, Any] = {}
     if kind == "pdf":
         pages, page_metrics = extract_pdf.extract_pdf(path)
-    elif kind == "docx":
+    elif kind in ("docx", "doc"):
         pages, meta = extract_docx.extract_docx(path)
     elif kind == "pptx":
         pages, meta = extract_pptx.extract_pptx(path)

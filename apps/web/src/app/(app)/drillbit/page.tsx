@@ -414,9 +414,9 @@ export default function DrillbitPlagiarismPage() {
     toast({ title: "Downloaded", description: "Humanized document saved to your device." });
   };
 
-  const [downloadingFormat, setDownloadingFormat] = useState<"pdf" | "docx" | null>(null);
+  const [downloadingFormat, setDownloadingFormat] = useState<"pdf" | "docx" | "doc" | null>(null);
 
-  const handleDownloadFile = async (format: "pdf" | "docx" | "txt") => {
+  const handleDownloadFile = async (format: "pdf" | "docx" | "doc" | "txt") => {
     if (!text.trim()) return;
     if (format === "txt") {
       handleDownloadText();
@@ -623,7 +623,7 @@ export default function DrillbitPlagiarismPage() {
                     inputMode === "upload" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  Upload File (PDF / DOCX)
+                  Upload File (PDF / DOCX / DOC)
                 </button>
                 <button
                   type="button"
@@ -1183,6 +1183,19 @@ export default function DrillbitPlagiarismPage() {
                     <Download className="h-4 w-4 mr-1.5" />
                   )}
                   Word (.docx)
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownloadFile("doc")}
+                  disabled={downloadingFormat !== null}
+                >
+                  {downloadingFormat === "doc" ? (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-1.5" />
+                  )}
+                  Word (.doc)
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => handleDownloadFile("txt")}>
                   <Download className="h-4 w-4 mr-1.5" /> Text (.txt)

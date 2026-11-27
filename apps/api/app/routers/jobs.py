@@ -17,8 +17,10 @@ from app.core.security import audit_meta
 from app.core.storage import delete, get_bytes, presign_get
 from app.models import AuditLog, Job, JobPage, Upload
 from app.schemas import JobCreateRequest, LockRequest
+from app.services import doc_convert
 from app.services import usage as usage_service
 from app.services.blocks import blocks_from_dicts
+from app.services.detect import MIME_BY_KIND
 from app.workers.tasks import analyze_job, publish, resume_job, start_job
 
 router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(require_csrf)])
@@ -280,6 +282,81 @@ async def download(job_id: str, user: CurrentUser, db: DbSession) -> dict:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Output is not ready yet")
     name = job.source_filename.rsplit(".", 1)[0] + ".humanized." + (job.file_kind or "pdf")
     return {"url": presign_get(job.output_key, expires=300, download_name=name), "expires_in": 300}
+
+
+@router.get("/{job_id}/export")
+async def export_job_format(
+    job_id: str,
+    user: CurrentUser,
+    db: DbSession,
+    format: str = "pdf",
+) -> Response:
+    """Download the completed job in the user's chosen format (.pdf, .docx, .doc, or .txt).
+
+    When the requested format matches the job's native layout-preserved output (e.g. PDF
+    on a PDF job or DOCX on a DOCX job), streams the rebuilt file verbatim so original
+    layout stays intact; otherwise converts the rewritten content cleanly on the fly.
+    """
+    import re
+
+    fmt = (format or "pdf").lower().strip()
+    if fmt not in ("pdf", "docx", "doc", "txt"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Supported formats are pdf, docx, doc, and txt.")
+
+    job = await _owned_job(db, job_id, user)
+    if job.status != "done" or not job.output_key:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Output is not ready yet")
+
+    stem = job.source_filename.rsplit(".", 1)[0] if "." in job.source_filename else job.source_filename
+    safe_base = re.sub(r"[^a-zA-Z0-9_-]", "_", stem or "HumanDoc_Document")[:80]
+    download_name = f"{safe_base}.humanized.{fmt}"
+
+    loop = asyncio.get_running_loop()
+
+    # Exact native rebuilt file match preserves 100% original layout (PDF->PDF, DOCX->DOCX, DOC->DOC, TXT->TXT)
+    if fmt == job.file_kind or (fmt == "txt" and job.file_kind == "md"):
+        raw = await loop.run_in_executor(None, get_bytes, job.output_key)
+        media = MIME_BY_KIND.get(job.file_kind, "application/octet-stream")
+        if fmt == "txt":
+            media = "text/plain; charset=utf-8"
+        return Response(
+            content=raw,
+            media_type=media,
+            headers={"Content-Disposition": f'attachment; filename="{download_name}"'},
+        )
+
+    # Otherwise gather rewritten text from JobPage checkpoints, falling back to output_key
+    rows = list(
+        await db.scalars(
+            select(JobPage).where(JobPage.job_id == job.id).order_by(JobPage.page_number)
+        )
+    )
+    paragraphs: list[str] = []
+    for row in rows:
+        for b in blocks_from_dicts(row.blocks):
+            txt = (b.new_text or b.text or "").strip()
+            if txt:
+                paragraphs.append(txt)
+
+    if not paragraphs:
+        raw = await loop.run_in_executor(None, get_bytes, job.output_key)
+        if job.file_kind in ("docx", "doc"):
+            paragraphs, _ = doc_convert.extract_word_paragraphs(raw, job.source_filename)
+        elif job.file_kind == "pdf":
+            import fitz
+
+            pdf_doc = fitz.open(stream=raw, filetype="pdf")
+            paragraphs = [p.get_text("text").strip() for p in pdf_doc if p.get_text("text").strip()]
+            pdf_doc.close()
+        else:
+            paragraphs = [raw.decode("utf-8", errors="replace").strip()]
+
+    out_bytes, media_type = doc_convert.export_document_bytes(stem, paragraphs, fmt)
+    return Response(
+        content=out_bytes,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{download_name}"'},
+    )
 
 
 @router.get("/{job_id}/qa")

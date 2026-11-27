@@ -65,7 +65,7 @@ export default function NewJobPage() {
   const [pasteResult, setPasteResult] = React.useState<PasteResult | null>(null);
   const [convertingPaste, setConvertingPaste] = React.useState(false);
   const [copiedPaste, setCopiedPaste] = React.useState(false);
-  const [downloadingFmt, setDownloadingFmt] = React.useState<"pdf" | "docx" | null>(null);
+  const [downloadingFmt, setDownloadingFmt] = React.useState<"pdf" | "docx" | "doc" | null>(null);
   const [quota, setQuota] = React.useState<QuotaState | null>(null);
   const [options, setOptions] = React.useState<JobOptionsState>(DEFAULT_OPTIONS);
   const [job, setJob] = React.useState<Job | null>(null);
@@ -194,7 +194,7 @@ export default function NewJobPage() {
     setTimeout(() => setCopiedPaste(false), 2000);
   };
 
-  const downloadHumanizedOutput = async (fmt: "pdf" | "docx" | "txt") => {
+  const downloadHumanizedOutput = async (fmt: "pdf" | "docx" | "doc" | "txt") => {
     if (!pasteResult?.humanizedText) return;
     const baseName = (pastedTitle || "HumanDoc_Output").replace(/[^a-zA-Z0-9_-]/g, "_");
     if (fmt === "txt") {
@@ -463,6 +463,15 @@ export default function NewJobPage() {
                           >
                             {downloadingFmt === "docx" ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Download className="h-3.5 w-3.5 mr-1" />}
                             Word (.docx)
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => downloadHumanizedOutput("doc")}
+                            disabled={downloadingFmt !== null}
+                          >
+                            {downloadingFmt === "doc" ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Download className="h-3.5 w-3.5 mr-1" />}
+                            Word (.doc)
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => downloadHumanizedOutput("txt")}>
                             <Download className="h-3.5 w-3.5 mr-1" />

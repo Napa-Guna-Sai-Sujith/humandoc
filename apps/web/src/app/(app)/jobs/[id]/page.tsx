@@ -40,8 +40,49 @@ export default function JobDetailPage() {
   const [loading, setLoading] = React.useState(true);
   const [downloadUrl, setDownloadUrl] = React.useState<string | null>(null);
   const [qaUrl, setQaUrl] = React.useState<string | null>(null);
+  const [downloadingFmt, setDownloadingFmt] = React.useState<"pdf" | "docx" | "doc" | "txt" | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+
+  const downloadFormat = async (fmt: "pdf" | "docx" | "doc" | "txt") => {
+    if (!job) return;
+    setDownloadingFmt(fmt);
+    try {
+      const st = getClientSessionToken();
+      const res = await fetch(`/backend/jobs/${jobId}/export?format=${fmt}`, {
+        credentials: "include",
+        headers: st ? { "x-hd-session": st } : undefined,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Failed to export .${fmt}`);
+      }
+      const blob = await res.blob();
+      const base = (job.filename.includes(".") ? job.filename.replace(/\.[^.]+$/, "") : job.filename)
+        .replace(/[^a-zA-Z0-9_-]/g, "_");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${base || "HumanDoc"}.humanized.${fmt}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: `Downloaded (.${fmt})`,
+        description: `Saved rewritten output as .${fmt.toUpperCase()}.`,
+        variant: "success",
+      });
+    } catch (err) {
+      toast({
+        title: "Download failed",
+        description: err instanceof Error ? err.message : `Could not export .${fmt} file.`,
+        variant: "error",
+      });
+    } finally {
+      setDownloadingFmt(null);
+    }
+  };
 
   const refresh = React.useCallback(async () => {
     try {
@@ -251,17 +292,28 @@ export default function JobDetailPage() {
               <div>
                 <h2 className="text-sm font-semibold">Deliverables</h2>
                 <p className="text-xs text-muted-foreground">
-                  The rewritten file plus a QA report listing flagged blocks and overflow fixes.
+                  Download in your original layout format (.{(job.kind || "pdf").toUpperCase()}) or convert to PDF, Word (.docx / .doc), or Text, plus the QA report.
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {downloadUrl ? (
-                  <Button variant="outline" asChild>
+                  <Button asChild>
                     <a href={downloadUrl}>
-                      <Download className="h-4 w-4" /> Rewritten file
+                      <Download className="h-4 w-4" /> Original (.{(job.kind || "pdf").toLowerCase()})
                     </a>
                   </Button>
                 ) : null}
+                {(["pdf", "docx", "doc", "txt"] as const).map((fmt) => (
+                  <Button
+                    key={fmt}
+                    variant="outline"
+                    onClick={() => void downloadFormat(fmt)}
+                    disabled={downloadingFmt !== null}
+                  >
+                    {downloadingFmt === fmt ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    {fmt === "pdf" ? "PDF (.pdf)" : fmt === "docx" ? "Word (.docx)" : fmt === "doc" ? "Word (.doc)" : "Text (.txt)"}
+                  </Button>
+                ))}
                 {qaUrl ? (
                   <Button variant="outline" asChild>
                     <a href={qaUrl}>

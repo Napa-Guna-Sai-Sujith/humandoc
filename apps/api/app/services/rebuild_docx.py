@@ -9,18 +9,44 @@ from docx import Document
 from docx.oxml.ns import qn
 from docx.text.run import Run
 
+from app.services import doc_convert
 from app.services.blocks import Block
 from app.services.extract_docx import _iter_paragraphs
 
 log = logging.getLogger(__name__)
 
+_SKIP_CONTAINERS = {
+    "drawing",
+    "pict",
+    "txbxContent",
+    "Fallback",
+}
+
+
+_MEDIA_TAGS = {"drawing", "pict", "object", "AlternateContent", "fldChar", "instrText"}
+
 
 def _all_runs(paragraph) -> list[Run]:
-    """Runs in true document order, including runs nested inside w:hyperlink."""
+    """Runs belonging to this paragraph (including w:hyperlink), excluding drawings/textboxes/fields."""
     runs: list[Run] = []
-    for element in paragraph._p.iter():
-        if element.tag == qn("w:r"):
-            runs.append(Run(element, paragraph))
+
+    def walk(node) -> None:
+        for child in node:
+            local = child.tag.rsplit("}", 1)[-1] if "}" in child.tag else child.tag
+            if local in _SKIP_CONTAINERS:
+                continue
+            if child.tag == qn("w:r"):
+                has_media = any(
+                    (gc.tag.rsplit("}", 1)[-1] if "}" in gc.tag else gc.tag) in _MEDIA_TAGS
+                    for gc in child
+                )
+                has_text = child.find(qn("w:t")) is not None
+                if has_text and not has_media:
+                    runs.append(Run(child, paragraph))
+            else:
+                walk(child)
+
+    walk(paragraph._p)
     return runs
 
 
@@ -89,3 +115,63 @@ def rebuild_docx(src: str | Path, dst: str | Path, pages: list[list[Block]]) -> 
 
     doc.save(dst)
     return {"replaced_blocks": replaced, "flagged": flagged, "paragraphs": len(paragraphs)}
+
+
+def rebuild_doc(src: str | Path, dst: str | Path, pages: list[list[Block]]) -> dict:
+    """Rebuild legacy .doc input back into a Word-compatible .doc file."""
+    raw = Path(src).read_bytes()
+    variant = doc_convert.sniff_word_variant(raw)
+
+    by_index: dict[int, Block] = {}
+    ordered_blocks: list[Block] = []
+    for page in pages:
+        for block in page:
+            ordered_blocks.append(block)
+            if block.source.startswith("docx:idx:"):
+                try:
+                    by_index[int(block.source.rsplit(":", 1)[1])] = block
+                except ValueError:
+                    continue
+
+    # If the uploaded .doc was actually a misnamed .docx ZIP, rebuild OOXML first, then export .doc
+    if variant == "docx":
+        import io
+
+        doc = Document(io.BytesIO(raw))
+        paragraphs = _iter_paragraphs(doc)
+        replaced = flagged = 0
+        final_paras: list[str] = []
+        for index, paragraph in enumerate(paragraphs):
+            block = by_index.get(index)
+            text_val = (block.new_text or block.text) if block else paragraph.text
+            if block and block.new_text and block.new_text != block.text:
+                ok, _note = set_paragraph_text(paragraph, block.new_text)
+                if ok:
+                    replaced += 1
+                else:
+                    flagged += 1
+            if text_val.strip():
+                final_paras.append(text_val.strip())
+        doc_bytes, _ = doc_convert.export_document_bytes(Path(src).stem, final_paras, "doc")
+        Path(dst).write_bytes(doc_bytes)
+        return {"replaced_blocks": replaced, "flagged": flagged, "paragraphs": len(paragraphs)}
+
+    paras, _ = doc_convert.extract_word_paragraphs(raw, Path(src).name)
+    replaced = 0
+    final_paras: list[str] = []
+    for idx, orig in enumerate(paras):
+        block = by_index.get(idx)
+        if block and block.new_text and block.new_text != block.text:
+            final_paras.append(block.new_text)
+            replaced += 1
+        elif block and block.text:
+            final_paras.append(block.text)
+        elif orig.strip():
+            final_paras.append(orig.strip())
+
+    if not final_paras:
+        final_paras = [b.new_text or b.text for b in ordered_blocks if (b.new_text or b.text).strip()]
+
+    doc_bytes, _ = doc_convert.export_document_bytes(Path(src).stem, final_paras, "doc")
+    Path(dst).write_bytes(doc_bytes)
+    return {"replaced_blocks": replaced, "flagged": 0, "paragraphs": len(final_paras)}

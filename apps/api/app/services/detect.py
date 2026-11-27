@@ -4,11 +4,14 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
-SUPPORTED_KINDS = {"pdf", "docx", "pptx", "txt", "md"}
+from app.services import doc_convert
+
+SUPPORTED_KINDS = {"pdf", "docx", "doc", "pptx", "txt", "md"}
 
 KIND_BY_EXT = {
     "pdf": "pdf",
     "docx": "docx",
+    "doc": "doc",
     "pptx": "pptx",
     "txt": "txt",
     "md": "md",
@@ -18,6 +21,7 @@ KIND_BY_EXT = {
 MIME_BY_KIND = {
     "pdf": "application/pdf",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "doc": "application/msword",
     "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "txt": "text/plain",
     "md": "text/markdown",
@@ -53,19 +57,26 @@ def sniff(path: str | Path, filename: str) -> tuple[str, str]:
             kind = "pptx"
         else:
             raise UnsupportedFileError("Office package has no document part")
+    elif head.startswith(doc_convert.OLE2_MAGIC):
+        kind = "doc"
     else:
-        # Plain text: reject if it contains NUL bytes or mostly non-text bytes.
-        sample = p.read_bytes()[:65536]
-        if b"\x00" in sample:
-            raise UnsupportedFileError("Binary file is not a supported document type")
-        if ext in ("txt", "md", "markdown"):
-            kind = "md" if ext in ("md", "markdown") else "txt"
+        raw_head = p.read_bytes()[:65536]
+        if doc_convert._is_rtf(raw_head) or (ext == "doc" and doc_convert._is_html_or_wordxml(raw_head)):
+            kind = "doc"
         else:
-            try:
-                sample.decode("utf-8")
-            except UnicodeDecodeError as exc:
-                raise UnsupportedFileError("File is not UTF-8 text") from exc
-            kind = "txt"
+            # Plain text: reject if it contains NUL bytes or mostly non-text bytes.
+            if b"\x00" in raw_head:
+                raise UnsupportedFileError("Binary file is not a supported document type")
+            if ext in ("txt", "md", "markdown"):
+                kind = "md" if ext in ("md", "markdown") else "txt"
+            elif ext == "doc":
+                kind = "doc"
+            else:
+                try:
+                    raw_head.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise UnsupportedFileError("File is not UTF-8 text") from exc
+                kind = "txt"
 
     if kind not in SUPPORTED_KINDS:
         raise UnsupportedFileError(f"Unsupported file type: {kind}")

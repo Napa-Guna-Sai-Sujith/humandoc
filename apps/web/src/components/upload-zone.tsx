@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { api, ApiError } from "@/lib/api";
 import { cn, formatBytes } from "@/lib/utils";
 
-const ACCEPTED = ".pdf,.docx,.pptx,.txt,.md";
+const ACCEPTED = ".pdf,.docx,.doc,.pptx,.txt,.md";
 
 type Props = {
   onUploaded: (payload: { uploadId: string; filename: string; size: number; mime: string }) => void;
@@ -131,7 +131,7 @@ export function UploadZone({ onUploaded, maxMb }: Props) {
             <UploadCloud className="mb-3 h-8 w-8 text-muted-foreground" />
             <p className="font-medium">Drop your document here, or click to browse</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              PDF (text or scanned), DOCX, PPTX, TXT, Markdown · up to {maxMb} MB
+              PDF (text or scanned), DOCX, DOC, PPTX, TXT, Markdown · up to {maxMb} MB
             </p>
           </>
         ) : null}

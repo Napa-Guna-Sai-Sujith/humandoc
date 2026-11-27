@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     if (!text.trim()) {
       return NextResponse.json({ detail: "Document text is empty." }, { status: 400 });
     }
-    if (!["pdf", "docx", "txt"].includes(format)) {
+    if (!["pdf", "docx", "doc", "txt"].includes(format)) {
       return NextResponse.json({ detail: "Unsupported export format." }, { status: 400 });
     }
 
@@ -59,7 +59,9 @@ export async function POST(req: NextRequest) {
     const contentType =
       format === "docx"
         ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        : "application/pdf";
+        : format === "doc"
+          ? "application/msword"
+          : "application/pdf";
 
     return new NextResponse(new Uint8Array(buf), {
       status: 200,
