@@ -11,6 +11,6 @@ jobs:
     steps:
       - name: Ping Render API health endpoint
         run: |
-          code=$(curl -s -o /dev/null -w "%{http_code}" https://humandoc.onrender.com/health)
+          code=$(curl -s --retry 3 --retry-delay 5 --max-time 25 -o /dev/null -w "%{http_code}" https://humandoc.onrender.com/health)
           echo "Render /health HTTP status: $code"
           test "$code" = "200"

@@ -10,6 +10,7 @@ migration materialises exactly that metadata, so the two can never drift apart.
 from collections.abc import Sequence
 
 from alembic import op
+
 from app import models  # noqa: F401
 from app.core.db import Base
 
