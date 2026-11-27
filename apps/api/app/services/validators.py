@@ -48,7 +48,13 @@ def _length_ratio(original: str, rewritten: str) -> float:
     return n / o
 
 
-def _tolerance(block: Block) -> float:
+def _tolerance(block: Block, *, relax_length: bool = False) -> float:
+    if relax_length:
+        if block.word_count < 10:
+            return 1.25
+        if block.word_count < 25:
+            return 0.75
+        return 0.50
     if block.word_count < 10:
         return 0.85
     if block.word_count < 25:
@@ -138,7 +144,13 @@ def script_signature(text: str) -> str:
     return max(counts, key=counts.get) if counts else ""
 
 
-def validate_rewrite(block: Block, rewritten: str, *, strict_numbers: bool = True) -> ValidationResult:
+def validate_rewrite(
+    block: Block,
+    rewritten: str,
+    *,
+    strict_numbers: bool = True,
+    relax_length: bool = False,
+) -> ValidationResult:
     original = block.text
     rewritten = (rewritten or "").strip()
     if not rewritten:
@@ -147,7 +159,7 @@ def validate_rewrite(block: Block, rewritten: str, *, strict_numbers: bool = Tru
         return ValidationResult.pass_(unchanged=1)
 
     ratio = _length_ratio(original, rewritten)
-    tol = _tolerance(block)
+    tol = _tolerance(block, relax_length=relax_length)
     if abs(ratio - 1.0) > tol:
         return ValidationResult.fail(
             f"length ratio {ratio:.2f} outside ±{tol:.0%}", length_ratio=ratio
@@ -163,9 +175,10 @@ def validate_rewrite(block: Block, rewritten: str, *, strict_numbers: bool = Tru
     missing_nouns = _missing_proper_nouns(original, rewritten)
     if len(missing_nouns) > 1:
         reasons.append(f"names dropped: {', '.join(missing_nouns[:4])}")
-    banned = banned_phrases(rewritten)
-    if banned:
-        reasons.append(f"stock AI phrases: {', '.join(banned[:4])}")
+    orig_banned = set(banned_phrases(original))
+    introduced_banned = [p for p in banned_phrases(rewritten) if p not in orig_banned]
+    if introduced_banned:
+        reasons.append(f"stock AI phrases: {', '.join(introduced_banned[:4])}")
     if EM_DASH * 2 in rewritten:
         reasons.append("em-dash overuse")
     if script_signature(original) and script_signature(rewritten) != script_signature(original):

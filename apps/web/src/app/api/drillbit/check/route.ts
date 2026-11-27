@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { analyzeDrillbit } from "@/lib/drillbit";
+import { analyzeDrillbitLive } from "@/lib/drillbit";
 import { getUserQuota, recordDrillbitUsage } from "@/lib/quota";
 import { getSession } from "@/lib/session";
 
@@ -65,7 +65,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const report = analyzeDrillbit(text, {
+    const report = await analyzeDrillbitLive(text, {
       title,
       excludeQuotes: filters?.excludeQuotes,
       excludeBibliography: filters?.excludeBibliography,

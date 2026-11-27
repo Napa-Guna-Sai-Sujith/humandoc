@@ -358,6 +358,22 @@ def _extract_ole2_doc_paragraphs(data: bytes) -> list[str]:
         if paras:
             return paras
 
+    # Third fallback (Word 6.0 / Word95 / damaged FIB): scan printable runs in WordDocument
+    scan_paras: list[str] = []
+    for chunk in re.findall(rb"[A-Za-z0-9][A-Za-z0-9 ,.;:!?()'\"/%\-]{18,}", word_doc):
+        decoded = chunk.decode("cp1252", errors="ignore").strip()
+        if len(decoded.split()) >= 4 and not re.match(r"^(?:Normal|Heading|Times New Roman|Arial|Calibri|Microsoft)\b", decoded):
+            scan_paras.append(decoded)
+    if scan_paras:
+        return scan_paras
+
+    # UTF-16LE scan inside WordDocument
+    u16_chunks = re.findall(rb"(?:[A-Za-z0-9 ,.;:!?()'\"/\-]\x00){18,}", word_doc)
+    u16_paras = [c.decode("utf-16-le", errors="ignore").strip() for c in u16_chunks]
+    u16_paras = [p for p in u16_paras if len(p.split()) >= 4]
+    if u16_paras:
+        return u16_paras
+
     raise ValueError("Could not extract readable text from .doc binary file")
 
 

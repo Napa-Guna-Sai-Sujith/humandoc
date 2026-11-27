@@ -404,6 +404,7 @@ async def rewrite_plain_text(req: TextRewriteRequest) -> dict:
         strength=strength,
         language=req.language or "auto",
         custom=req.custom_instructions or "",
+        document_type="docx",
         glossary=glossary,
     )
 

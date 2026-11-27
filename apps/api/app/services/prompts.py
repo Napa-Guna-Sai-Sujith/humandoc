@@ -73,28 +73,42 @@ BANNED_PHRASES = [
 
 HUMANIZING_RULES = """
 QUALITY RULES (non-negotiable):
-- Vary sentence length and structure. Mix short declaratives with longer, looser sentences.
-- Do not write uniform three-part sentences, parallel triads, or balanced "not X but Y" constructions.
-- Use plain, direct wording. Prefer the short Germanic verb over the Latinate one.
-- Natural transitions: use "and", "but", "so", "still", "yet" — or no transition at all. Never stack connectives.
-- No stock phrases, no corporate haze, no em-dash overuse (at most one per paragraph).
+- Break uniform AI sentence cadence (high burstiness): intentionally alternate short 6-11 word sentences with longer 20-28 word sentences.
+- NEVER end sentences with formulaic AI participial tails (", ensuring...", ", enabling...", ", allowing...", ", thereby...", ", resulting in...", ", leading to...", ", highlighting...", ", which enables...", ", which ensures..."). Turn those into separate punchy sentences or finite clauses.
+- Vary sentence openings across the paragraph; do not start consecutive sentences with "The", "This", "These", "It", "Additionally", "Furthermore", "Moreover", or "However".
+- Reorder subordinate clauses and change passive/nominalized constructions into direct active phrasing so exact 4-5 word chains from the source are broken.
+- Do not write uniform three-part lists, parallel triads, or balanced "not X but Y" / "both X and Y" constructions.
+- Use plain, direct wording. Prefer concrete verbs ("use", "help", "show", "build", "drive") over formal AI Latinate verbs ("utilize", "facilitate", "demonstrate", "leverage", "foster").
+- Natural transitions: use "and", "but", "so", "still", "yet" — or omit transitions altogether. Never stack connectives or use banned clichés.
 - Never invent facts, statistics, anecdotes, quotes, sources, or slang. Never add deliberate typos.
 - Preserve the author's meaning and claims exactly. If the original is uncertain, stay uncertain.
-- Keep the original language, register and dialect. Do not translate unless asked.
-- Keep every number, date, name, unit, citation, DOI, URL, email and technical term byte-identical.
+- Keep every number, date, name, unit, citation ([1], et al.), DOI, URL, email and technical acronym byte-identical.
 - Output must be the same kind of block: a heading stays a heading (short), a list item stays a list item.
 """.strip()
 
-HARD_CONSTRAINTS = """
+HARD_CONSTRAINTS_FIXED = """
 HARD CONSTRAINTS:
 - Return JSON ONLY. No prose before or after. No markdown fences.
 - Schema: {"block_id": "<id>", "rewritten": "<text>", "terms": {"<term>": "<canonical form>"}, "notes": ""}
 - Same meaning, same facts, same numbers, same names, same dates, same citations, same technical terms.
-- Length within ±10% of the original character count.
+- Length within ±12% of the original character count (this block sits in a fixed PDF layout box).
 - Same tone and register. Same language.
 - Do not add headings, bullets, numbers or section labels that were not there.
 - If the block is a fragment, keep it a fragment.
 """.strip()
+
+HARD_CONSTRAINTS_REFLOW = """
+HARD CONSTRAINTS:
+- Return JSON ONLY. No prose before or after. No markdown fences.
+- Schema: {"block_id": "<id>", "rewritten": "<text>", "terms": {"<term>": "<canonical form>"}, "notes": ""}
+- Same meaning, same facts, same numbers, same names, same dates, same citations, same technical terms.
+- Restructure and reorder sentences freely so phrasing reads naturally like original human writing; keep total length within roughly ±25% of the original character count.
+- Same register and language.
+- Do not add headings, bullets, numbers or section labels that were not there.
+- If the block is a fragment, keep it a fragment.
+""".strip()
+
+HARD_CONSTRAINTS = HARD_CONSTRAINTS_FIXED
 
 
 def build_system_prompt(*, style: str, strength: str, language: str, glossary: dict[str, str],
@@ -108,12 +122,13 @@ def build_system_prompt(*, style: str, strength: str, language: str, glossary: d
         glossary_text = f"\nTERMINOLOGY MEMORY (use these exact forms, never paraphrase):\n{items}\n"
 
     custom_text = f"\nUSER INSTRUCTIONS (apply unless they conflict with the hard constraints):\n{custom.strip()}\n" if custom else ""
+    constraints = HARD_CONSTRAINTS_FIXED if document_type == "pdf" else HARD_CONSTRAINTS_REFLOW
 
     return f"""You are HumanDoc's rewrite engine. You rewrite one block of a document at a time so the
-whole document reads as if a careful human wrote it. You never touch layout, images, tables,
-equations, code, citations or page numbers — those are handled elsewhere.
+whole document reads as if a careful human wrote it — never like templated LLM output. You never touch
+layout, images, tables, equations, code, citations or page numbers — those are handled elsewhere.
 
-{HARD_CONSTRAINTS}
+{constraints}
 
 {HUMANIZING_RULES}
 

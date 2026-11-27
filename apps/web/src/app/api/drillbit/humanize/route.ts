@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { analyzeDrillbit, humanizeForDrillbit } from "@/lib/drillbit";
+import { analyzeDrillbitLive, humanizeForDrillbit } from "@/lib/drillbit";
 import { getSession } from "@/lib/session";
+
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
@@ -20,25 +22,59 @@ export async function POST(req: Request) {
       return NextResponse.json({ detail: "Text is required to humanize." }, { status: 400 });
     }
 
-    const { humanizedText, wordsChanged } = humanizeForDrillbit(text);
+    let rewritten = text;
+    let wordsChanged = 0;
 
-    // Re-analyze humanized text with Drillbit engine
-    const postReport = analyzeDrillbit(humanizedText, {
+    // 1. Call FastAPI RewriteEngine (/drillbit/rewrite-text) for full LLM + syntactic rewriting
+    const backendBase =
+      process.env.API_INTERNAL_URL ||
+      (process.env.NODE_ENV === "production" ? "https://humandoc.onrender.com" : "http://localhost:8000");
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 30000);
+      const res = await fetch(`${backendBase}/drillbit/rewrite-text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          style: "academic",
+          strength: "strong",
+          tone: 55,
+          language: "auto",
+        }),
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timer));
+
+      if (res.ok) {
+        const data = (await res.json()) as { ok?: boolean; humanizedText?: string; paragraphsChanged?: number };
+        if (data.humanizedText && data.humanizedText.trim()) {
+          rewritten = data.humanizedText;
+          wordsChanged = Math.max(1, data.paragraphsChanged || 0);
+        }
+      }
+    } catch (err) {
+      console.warn("[drillbit/humanize] Backend rewrite fallback to local engine:", err);
+    }
+
+    // 2. Apply local participial/AI-cliché polish pass to catch any remaining markers
+    const localPass = humanizeForDrillbit(rewritten);
+    if (localPass.humanizedText && localPass.humanizedText.trim()) {
+      rewritten = localPass.humanizedText;
+      wordsChanged += localPass.wordsChanged;
+    }
+
+    // 3. Re-score honestly with live Drillbit analyzer — never fabricate 0% or <=4% scores
+    const postReport = await analyzeDrillbitLive(rewritten, {
       title: title ? `${title} (Humanized)` : "Humanized Document",
+      excludeQuotes: true,
+      excludeBibliography: true,
       excludeSmallMatches: true,
     });
 
-    // Ensure safe certified score
-    postReport.similarityScore = Math.min(postReport.similarityScore, 4);
-    postReport.gradeBand = "Satisfactory";
-    postReport.gradeColor = "green";
-    postReport.gradeDescription = "0% – 10% (UGC & University Compliant)";
-    postReport.aiScore = 0;
-    postReport.aiStatus = "100% Human";
-
     return NextResponse.json({
       ok: true,
-      humanizedText,
+      humanizedText: rewritten,
       wordsChanged,
       report: postReport,
     });

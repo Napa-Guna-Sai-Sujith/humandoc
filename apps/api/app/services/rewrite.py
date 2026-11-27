@@ -462,11 +462,156 @@ def _preserve_case(match_text: str, replacement: str) -> str:
     return replacement
 
 
-def _deep_local_humanize(original: str, style: str) -> str:
-    """Multi-pass rule-based humanizer that preserves numbers, terms, and length ±10%."""
+_BANNED_SCRUB: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bin today'?s fast-paced (?:digital |modern |technological )?(?:world|landscape|era|society|environment)\b", re.I), "in modern practice"),
+    (re.compile(r"\bin the realm of\b", re.I), "in"),
+    (re.compile(r"\bnavigat(?:e|ing) the complexities of\b", re.I), "handling"),
+    (re.compile(r"\bit is important to note(?: that)?\s*,?\s*", re.I), ""),
+    (re.compile(r"\bit['\u2019]s important to note(?: that)?\s*,?\s*", re.I), ""),
+    (re.compile(r"\bit is worth noting(?: that)?\s*,?\s*", re.I), ""),
+    (re.compile(r"\bdelv(?:e|es|ed|ing) into\b", re.I), "examine"),
+    (re.compile(r"\bdiv(?:e|es|ed|ing) into\b", re.I), "look into"),
+    (re.compile(r"\bplays a (?:crucial|pivotal|vital|critical|key) role in\b", re.I), "directly shapes"),
+    (re.compile(r"\ba testament to\b", re.I), "proof of"),
+    (re.compile(r"\btapestry of\b", re.I), "mix of"),
+    (re.compile(r"\btapestry\b", re.I), "mix"),
+    (re.compile(r"\blandscape\b", re.I), "space"),
+    (re.compile(r"\bunlock(?:s|ed|ing)?\b", re.I), "open up"),
+    (re.compile(r"\belevat(?:e|es|ed|ing)\b", re.I), "lift"),
+    (re.compile(r"\bgame-changer\b", re.I), "major step forward"),
+    (re.compile(r"\bpivotal\b", re.I), "central"),
+    (re.compile(r"\bcrucial\b", re.I), "key"),
+    (re.compile(r"\bseamless(?:ly)?\b", re.I), "smooth"),
+    (re.compile(r"\brobust\b", re.I), "solid"),
+    (re.compile(r"\bunderscor(?:e|es|ed|ing)\b", re.I), "highlight"),
+    (re.compile(r"\bfurthermore\s*,?\s*", re.I), "Also, "),
+    (re.compile(r"\bmoreover\s*,?\s*", re.I), "Beyond that, "),
+    (re.compile(r"\badditionally\s*,?\s*", re.I), "Plus, "),
+    (re.compile(r"\bnotably\s*,?\s*", re.I), "In practice, "),
+    (re.compile(r"\boverall\s*,?\s*", re.I), "Taken together, "),
+    (re.compile(r"\bin conclusion\s*,?\s*", re.I), "To wrap up, "),
+    (re.compile(r"\bleverag(?:e|es|ed|ing)\b", re.I), "use"),
+    (re.compile(r"\bholistic\b", re.I), "broad"),
+    (re.compile(r"\bparadigm shift\b", re.I), "major change"),
+    (re.compile(r"\bparadigm\b", re.I), "model"),
+    (re.compile(r"\bmultifaceted\b", re.I), "varied"),
+    (re.compile(r"\bcomprehensive\b", re.I), "complete"),
+    (re.compile(r"\bacross diverse ([a-z]+ )?environments\b", re.I), r"across varied \1settings"),
+    (re.compile(r"\bdiverse\b", re.I), "varied"),
+    (re.compile(r"\butiliz(?:e|es|ed|ing)\b", re.I), "use"),
+    (re.compile(r"\bfacilitat(?:e|es|ed|ing)\b", re.I), "help"),
+    (re.compile(r"\bdemonstrat(?:e|es|ed|ing)\b", re.I), "show"),
+]
+
+_PARTICIPIAL_TAIL_RE = re.compile(
+    r",\s*(?:thereby\s+|thus\s+|ultimately\s+)?(ensuring|enabling|allowing|resulting in|leading to|highlighting|demonstrating|indicating|creating|making it|improving|enhancing|reducing|increasing)\s+(?:that\s+)?([^.!?]{6,140})([.!?])",
+    re.I,
+)
+
+_WHICH_TAIL_RE = re.compile(
+    r",\s*which\s+(ensures|enables|allows|facilitates|improves|enhances|reduces|increases|leads to|results in)\s+([^.!?]{6,140})([.!?])",
+    re.I,
+)
+
+
+def _rewrite_participial_tail(m: re.Match[str]) -> str:
+    verb = m.group(1).lower()
+    rest = m.group(2).strip()
+    end = m.group(3)
+    tail_map = {
+        "ensuring": f". This keeps {rest}{end}" if not rest.lower().startswith("improved") else f" and supports {rest}{end}",
+        "enabling": f". That lets {rest}{end}",
+        "allowing": f" so {rest}{end}",
+        "resulting in": f". That leads directly to {rest}{end}",
+        "leading to": f". Over time, that brings {rest}{end}",
+        "highlighting": f". This points clearly to {rest}{end}",
+        "demonstrating": f". That shows {rest}{end}",
+        "indicating": f". That suggests {rest}{end}",
+        "creating": f", forming {rest}{end}",
+        "making it": f". That leaves it {rest}{end}",
+        "improving": f", lifting {rest}{end}",
+        "enhancing": f" and strengthening {rest}{end}",
+        "reducing": f" while cutting {rest}{end}",
+        "increasing": f" and raising {rest}{end}",
+    }
+    return tail_map.get(verb, f". That produces {rest}{end}")
+
+
+def _rewrite_which_tail(m: re.Match[str]) -> str:
+    verb = m.group(1).lower()
+    rest = m.group(2).strip()
+    end = m.group(3)
+    plain = {
+        "ensures": "makes sure",
+        "enables": "lets",
+        "allows": "lets",
+        "facilitates": "supports",
+        "improves": "raises",
+        "enhances": "lifts",
+        "reduces": "cuts",
+        "increases": "boosts",
+        "leads to": "brings",
+        "results in": "produces",
+    }.get(verb, verb)
+    return f". That {plain} {rest}{end}"
+
+
+def _vary_sentence_rhythm(text: str, strength: str = "medium") -> str:
+    """Split monotonous compound AI sentences and diversify adjacent starters."""
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+    if len(sentences) <= 1:
+        # Try splitting long comma/semicolon compound sentence on strong/medium pass
+        s = text.strip()
+        if len(s.split()) >= 22 and "; " in s:
+            left, right = s.split("; ", 1)
+            right = right[:1].upper() + right[1:]
+            return f"{left.rstrip('.')}. {right}"
+        return text
+
+    out: list[str] = []
+    prev_first = ""
+    for idx, s in enumerate(sentences):
+        # Fix leading lowercase after dropped boilerplate opener
+        if s and s[0].islower():
+            s = s[0].upper() + s[1:]
+        first = s.split(None, 1)[0].lower().strip(",:;")
+        if first == prev_first and first in ("the", "this", "these", "it") and idx > 0:
+            if first == "the" and not s.lower().startswith("the same"):
+                s = re.sub(r"^The\s+([a-z]+)", lambda m: f"Each {m.group(1)}" if m.group(1).endswith(("y", "m", "t", "n", "r")) else f"Such {m.group(1)}", s, count=1)
+            elif first == "this":
+                s = re.sub(r"^This\b", "That", s, count=1)
+            elif first == "it":
+                s = re.sub(r"^It is\b", "That setup is", s, count=1)
+        if strength == "strong" and len(s.split()) >= 24 and ", and " in s:
+            parts = s.split(", and ", 1)
+            if len(parts[0].split()) >= 8 and len(parts[1].split()) >= 6:
+                s = f"{parts[0].rstrip('.')}. In turn, {parts[1]}"
+        out.append(s)
+        prev_first = s.split(None, 1)[0].lower().strip(",:;")
+    return " ".join(out)
+
+
+def _deep_local_humanize(original: str, style: str, strength: str = "medium") -> str:
+    """Multi-pass syntactic & lexical humanizer that preserves numbers, terms, and entities."""
     text = original
+    for pattern, repl in _BANNED_SCRUB:
+        text = pattern.sub(lambda m, r=repl: _preserve_case(m.group(0), r) if r else "", text)
     for pattern, repl in _LOCAL_SUBSTITUTIONS:
         text = pattern.sub(lambda m, r=repl: _preserve_case(m.group(0), r), text)
+
+    # Transform participial and ", which ..." AI tails before sentence-level rhythm tuning
+    text = _PARTICIPIAL_TAIL_RE.sub(_rewrite_participial_tail, text)
+    text = _WHICH_TAIL_RE.sub(_rewrite_which_tail, text)
+
+    # Break common academic / passive templates
+    text = re.sub(r"\bcan be observed that\b", "shows that", text, flags=re.I)
+    text = re.sub(r"\bit can be seen that\b", "", text, flags=re.I)
+    text = re.sub(r"\bis widely used (?:for|to)\b", "commonly serves for", text, flags=re.I)
+    text = re.sub(r"\btransforming modern ([a-z]+) workflows\b", r"reshaping daily \1 work", text, flags=re.I)
+    text = re.sub(r"\ba wide range of\b", "many", text, flags=re.I)
+    text = re.sub(r"\ba broad range of\b", "varied", text, flags=re.I)
+    text = re.sub(r"\ba large number of\b", "many", text, flags=re.I)
+    text = re.sub(r"\bsignificant improvement(s)?\b", r"clear gain\1", text, flags=re.I)
 
     words = text.split()
     if len(words) >= 4:
@@ -478,7 +623,7 @@ def _deep_local_humanize(original: str, style: str) -> str:
             text = re.sub(r"\bwill not\b", "won't", text)
             text = re.sub(r"\bthey are\b", "they're", text)
             text = re.sub(r"\bwe are\b", "we're", text)
-        
+
         # Natural conversational flow
         text = re.sub(r"\bHowever,\s+", "Still, ", text)
         text = re.sub(r"\bTherefore,\s+", "So ", text)
@@ -540,6 +685,13 @@ def _deep_local_humanize(original: str, style: str) -> str:
                     text = new_text
                     break
 
+        text = _vary_sentence_rhythm(text, strength=strength)
+
+    # Clean stray whitespace/punctuation left by stripped boilerplate
+    text = re.sub(r"\s{2,}", " ", text).strip()
+    text = re.sub(r"^[,;:\s]+", "", text)
+    if text and text[0].islower() and original and original[0].isupper():
+        text = text[0].upper() + text[1:]
     return text
 
 
@@ -665,13 +817,18 @@ class RewriteEngine:
         block_id = bid_m.group(1) if bid_m else "p1b0"
         orig_m = re.search(r"<<<\n(.*?)\n>>>", user, re.S)
         orig = orig_m.group(1).strip() if orig_m else ""
-        candidate = _deep_local_humanize(orig, self.style)
-        
+        candidate = _deep_local_humanize(orig, self.style, strength=self.strength)
+
         probe = Block(id=block_id, page=1, text=orig)
-        validation = validate_rewrite(probe, candidate)
+        validation = validate_rewrite(probe, candidate, relax_length=(self.document_type != "pdf"))
         if not validation.ok:
-            candidate = orig
-            
+            # If syntactic split blew length budget, retry lighter lexical humanize instead of reverting to 0 changes
+            lighter = _deep_local_humanize(orig, self.style, strength="light")
+            if validate_rewrite(probe, lighter, relax_length=(self.document_type != "pdf")).ok:
+                candidate = lighter
+            else:
+                candidate = orig
+
         payload = json.dumps({"block_id": block_id, "rewritten": candidate, "terms": {}, "notes": "humanized-local"})
         tin = max(20, int(len(user.split()) * 1.3))
         tout = max(15, int(len(candidate.split()) * 1.3))
@@ -746,7 +903,7 @@ class RewriteEngine:
             candidate = ""
             if ok:
                 candidate = str(payload["rewritten"]).strip()
-                result = validate_rewrite(block, candidate)
+                result = validate_rewrite(block, candidate, relax_length=(self.document_type != "pdf"))
                 if result.ok:
                     block.new_text = candidate
                     block.flag = ""

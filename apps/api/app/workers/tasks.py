@@ -403,10 +403,9 @@ async def _finalize_job(job_id: str) -> None:
             strength=options.get("strength", "medium"),
             language=options.get("language", "auto"),
             custom=options.get("custom_instructions", ""),
+            document_type=file_kind,
             glossary=memory.load(),
         )
-        if settings.anthropic_api_key
-        else None
     )
 
     suffix = {"pdf": ".pdf", "docx": ".docx", "doc": ".doc", "pptx": ".pptx", "txt": ".txt", "md": ".md"}[file_kind]

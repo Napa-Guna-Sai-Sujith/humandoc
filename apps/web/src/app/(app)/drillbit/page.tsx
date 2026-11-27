@@ -380,10 +380,11 @@ export default function DrillbitPlagiarismPage() {
 
       setText(res.humanizedText);
       setReport(res.report);
+      const passed = res.report.similarityScore <= 10 && res.report.aiScore <= 15;
       toast({
-        title: "Document Humanized & Verified!",
-        description: `Similarity lowered to ${res.report.similarityScore}% (Grade A / UGC Compliant) and 0% AI detected.`,
-        variant: "success",
+        title: passed ? "Document Humanized & Verified!" : "Rewrite Applied — Review Score",
+        description: `Measured score: ${res.report.similarityScore}% similarity · ${res.report.aiScore}% AI (${res.report.aiStatus}).`,
+        variant: passed ? "success" : "default",
       });
     } catch (err) {
       toast({
@@ -517,7 +518,7 @@ export default function DrillbitPlagiarismPage() {
 
   const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
   const computedPages = uploadedPages ?? Math.max(1, Math.ceil(wordCount / 350));
-  const isSafe = report ? report.similarityScore <= 10 : false;
+  const isSafe = report ? report.similarityScore <= 10 && report.aiScore <= 15 : false;
 
   return (
     <div className="space-y-6 pb-12">
@@ -964,16 +965,24 @@ export default function DrillbitPlagiarismPage() {
                   <div
                     className={cn(
                       "text-4xl font-extrabold tracking-tight my-1",
-                      report.aiScore === 0 ? "text-emerald-600" : "text-amber-600",
+                      report.aiScore <= 15
+                        ? "text-emerald-600"
+                        : report.aiScore <= 50
+                          ? "text-amber-600"
+                          : "text-red-600",
                     )}
                   >
                     {report.aiScore}%
                   </div>
-                  <Badge variant={report.aiScore === 0 ? "success" : "default"} className="text-xs">
+                  <Badge variant={report.aiScore <= 15 ? "success" : "default"} className="text-xs">
                     {report.aiStatus}
                   </Badge>
                   <p className="text-[11px] text-muted-foreground mt-2">
-                    {report.aiScore === 0 ? "Natural human syntax" : "High repetitive perplexity"}
+                    {report.aiScore <= 15
+                      ? "Natural human syntax & rhythm"
+                      : report.aiScore <= 50
+                        ? "Moderate AI markers / flat cadence"
+                        : "High uniform AI phrasing detected"}
                   </p>
                 </div>
 
@@ -1018,7 +1027,7 @@ export default function DrillbitPlagiarismPage() {
                         {isSafe ? "Passed Verification" : "Requires Modification"}
                       </p>
                       <p className="text-[11px] text-muted-foreground">
-                        {isSafe ? "Meets institutional <10% standard" : "Exceeds standard 10% threshold"}
+                        {isSafe ? "Meets <10% similarity & <=15% AI limit" : "Exceeds <=10% similarity or <=15% AI threshold"}
                       </p>
                     </div>
                   </div>
@@ -1053,7 +1062,7 @@ export default function DrillbitPlagiarismPage() {
               {activeTab === "report" ? (
                 <div className="mt-4 rounded-xl border bg-card p-5 text-sm leading-relaxed space-y-3 font-serif">
                   <p className="text-xs font-sans text-muted-foreground mb-3 italic">
-                    Highlighted sections represent text segments matched with external databases. Badges [1], [2] correspond to matched sources.
+                    Colored underlines [1], [2] indicate source/academic overlap. Amber [AI] highlights indicate AI-like phrasing or flat cadence.
                   </p>
                   <div className="whitespace-pre-wrap">
                     {report.segments.map((seg, idx) => {
@@ -1074,6 +1083,24 @@ export default function DrillbitPlagiarismPage() {
                               className="font-bold px-1 ml-0.5 rounded bg-white shadow-xs text-[10px]"
                             >
                               [{seg.sourceId}]
+                            </sup>
+                            {seg.isAi ? (
+                              <sup className="font-bold px-1 ml-0.5 rounded bg-amber-100 text-amber-800 text-[10px]">
+                                AI
+                              </sup>
+                            ) : null}{" "}
+                          </span>
+                        );
+                      }
+                      if (seg.isAi) {
+                        return (
+                          <span
+                            key={idx}
+                            className="bg-amber-500/15 border-b-2 border-amber-500 px-1 py-0.5 rounded font-sans inline"
+                          >
+                            {seg.text}
+                            <sup className="font-bold px-1 ml-0.5 rounded bg-amber-100 text-amber-800 text-[10px]">
+                              [AI]
                             </sup>{" "}
                           </span>
                         );

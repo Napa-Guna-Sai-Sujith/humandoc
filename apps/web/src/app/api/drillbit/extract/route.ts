@@ -45,6 +45,37 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Fast-path RTF / HTML-as-.doc so legacy Web/WordPad .doc uploads extract without backend wait
+    if (ext === "doc") {
+      const rawBuf = new Uint8Array(await file.arrayBuffer());
+      const head = new TextDecoder("latin1").decode(rawBuf.subarray(0, 512)).trimStart();
+      if (head.toLowerCase().startsWith("<!doctype html") || head.toLowerCase().startsWith("<html")) {
+        const htmlRaw = new TextDecoder("utf-8", { fatal: false }).decode(rawBuf);
+        const text = htmlRaw
+          .replace(/<(script|style|head|xml)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+          .replace(/<\/?(?:p|div|br|tr|h[1-6]|li)\b[^>]*>/gi, "\n")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/&nbsp;/gi, " ")
+          .replace(/&amp;/gi, "&")
+          .replace(/&lt;/gi, "<")
+          .replace(/&gt;/gi, ">")
+          .replace(/[ \t]+/g, " ")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+        const words = text ? text.split(/\s+/).length : 0;
+        const pages = Math.max(1, Math.ceil(words / 350));
+        if (words > 0) {
+          if (pages > 100) {
+            return NextResponse.json(
+              { detail: `Document exceeds 100-page limit (${pages} pages found). Maximum allowed is 100 pages.` },
+              { status: 400 },
+            );
+          }
+          return NextResponse.json({ ok: true, filename, pages, wordCount: words, characterCount: text.length, text });
+        }
+      }
+    }
+
     // Direct high-performance in-process extraction for PDF files (zero cold-start delay)
     if (ext === "pdf") {
       try {

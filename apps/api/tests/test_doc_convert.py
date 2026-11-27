@@ -284,3 +284,24 @@ def test_drillbit_extract_and_export_endpoints(tmp_path: Path):
         )
         assert exp.status_code == 200, f"Export failed for {fmt}: {exp.text}"
         assert len(exp.content) > 20
+
+
+def test_rewrite_text_defeats_ai_boilerplate_without_noop_fallback():
+    client = TestClient(app)
+    ai_sample = (
+        "In today's fast-paced digital landscape, artificial intelligence plays a crucial role in "
+        "transforming modern healthcare workflows, thereby ensuring improved patient outcomes across "
+        "diverse clinical environments."
+    )
+    res = client.post(
+        "/drillbit/rewrite-text",
+        json={"text": ai_sample, "style": "academic", "strength": "strong"},
+    )
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["paragraphsChanged"] >= 1
+    out = data["humanizedText"]
+    assert out != ai_sample
+    assert "landscape" not in out.lower()
+    assert "thereby ensuring" not in out.lower()
+
