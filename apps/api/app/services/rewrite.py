@@ -25,6 +25,7 @@ except ImportError:
 from app.core.config import settings
 from app.services import prompts
 from app.services.blocks import Block
+from app.services.local_paraphrase import paraphrase_block_local
 from app.services.validators import validate_json_payload, validate_rewrite
 
 log = logging.getLogger(__name__)
@@ -593,101 +594,18 @@ def _vary_sentence_rhythm(text: str, strength: str = "medium") -> str:
 
 def _deep_local_humanize(original: str, style: str, strength: str = "medium") -> str:
     """Multi-pass syntactic & lexical humanizer that preserves numbers, terms, and entities."""
-    text = original
+    text = paraphrase_block_local(original, style=style, strength=strength)
     for pattern, repl in _BANNED_SCRUB:
         text = pattern.sub(lambda m, r=repl: _preserve_case(m.group(0), r) if r else "", text)
     for pattern, repl in _LOCAL_SUBSTITUTIONS:
         text = pattern.sub(lambda m, r=repl: _preserve_case(m.group(0), r), text)
 
-    # Transform participial and ", which ..." AI tails before sentence-level rhythm tuning
     text = _PARTICIPIAL_TAIL_RE.sub(_rewrite_participial_tail, text)
     text = _WHICH_TAIL_RE.sub(_rewrite_which_tail, text)
 
-    # Break common academic / passive templates
-    text = re.sub(r"\bcan be observed that\b", "shows that", text, flags=re.I)
-    text = re.sub(r"\bit can be seen that\b", "", text, flags=re.I)
-    text = re.sub(r"\bis widely used (?:for|to)\b", "commonly serves for", text, flags=re.I)
-    text = re.sub(r"\btransforming modern ([a-z]+) workflows\b", r"reshaping daily \1 work", text, flags=re.I)
-    text = re.sub(r"\ba wide range of\b", "many", text, flags=re.I)
-    text = re.sub(r"\ba broad range of\b", "varied", text, flags=re.I)
-    text = re.sub(r"\ba large number of\b", "many", text, flags=re.I)
-    text = re.sub(r"\bsignificant improvement(s)?\b", r"clear gain\1", text, flags=re.I)
-
-    words = text.split()
-    if len(words) >= 4:
-        # Style-dependent cadence tuning
-        if style in ("casual", "direct"):
-            text = re.sub(r"\bdo not\b", "don't", text)
-            text = re.sub(r"\bcannot\b", "can't", text)
-            text = re.sub(r"\bit is\b", "it's", text)
-            text = re.sub(r"\bwill not\b", "won't", text)
-            text = re.sub(r"\bthey are\b", "they're", text)
-            text = re.sub(r"\bwe are\b", "we're", text)
-
-        # Natural conversational flow
-        text = re.sub(r"\bHowever,\s+", "Still, ", text)
-        text = re.sub(r"\bTherefore,\s+", "So ", text)
-        text = re.sub(r"\bNevertheless,\s+", "Even so, ", text)
-        text = re.sub(r"\bIn addition,\s+", "Also, ", text)
-        text = re.sub(r"\bFor instance,\s+", "For example, ", text)
-        text = re.sub(r"\bIn order to\b", "To", text)
-        text = re.sub(r"\bAs well as\b", "along with", text)
-        text = re.sub(r"\bWith the aim of\b", "aiming to", text)
-
-        # Active voice & punchy verb substitutions if text still matches original
-        if text == original:
-            substitutions = [
-                (r"\bprovides\b", "gives"),
-                (r"\bprovide\b", "give"),
-                (r"\bensures\b", "makes sure"),
-                (r"\bensure\b", "make sure"),
-                (r"\bassists\b", "helps"),
-                (r"\bassist\b", "help"),
-                (r"\bcontains\b", "holds"),
-                (r"\bdisplay\b", "show"),
-                (r"\bdisplays\b", "shows"),
-                (r"\bcommence\b", "start"),
-                (r"\bterminate\b", "end"),
-                (r"\bobtain\b", "get"),
-                (r"\breceive\b", "get"),
-                (r"\brequire\b", "need"),
-                (r"\brequires\b", "needs"),
-                (r"\bindicate\b", "show"),
-                (r"\bindicates\b", "shows"),
-                (r"\bnotify\b", "alert"),
-                (r"\bnotifies\b", "alerts"),
-                (r"\bselect\b", "choose"),
-                (r"\bselects\b", "chooses"),
-                (r"\ballow\b", "enable"),
-                (r"\ballows\b", "enables"),
-                (r"\bshow\b", "display"),
-                (r"\bshows\b", "displays"),
-                (r"\bhelp\b", "assist"),
-                (r"\bhelps\b", "assists"),
-                (r"\bmake\b", "create"),
-                (r"\bmakes\b", "creates"),
-                (r"\bkeep\b", "maintain"),
-                (r"\bkeeps\b", "maintains"),
-                (r"\bcheck\b", "review"),
-                (r"\bchecks\b", "reviews"),
-                (r"\bstart\b", "launch"),
-                (r"\bstarts\b", "launches"),
-                (r"\btrack\b", "monitor"),
-                (r"\btracks\b", "monitors"),
-                (r"\bverify\b", "confirm"),
-                (r"\bverifies\b", "confirms"),
-                (r"\bmanage\b", "oversee"),
-                (r"\bmanages\b", "oversees"),
-            ]
-            for pat, rep in substitutions:
-                new_text = re.sub(pat, rep, text, count=1)
-                if new_text != text:
-                    text = new_text
-                    break
-
+    if len(text.split()) >= 4:
         text = _vary_sentence_rhythm(text, strength=strength)
 
-    # Clean stray whitespace/punctuation left by stripped boilerplate
     text = re.sub(r"\s{2,}", " ", text).strip()
     text = re.sub(r"^[,;:\s]+", "", text)
     if text and text[0].islower() and original and original[0].isupper():
