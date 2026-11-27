@@ -57,7 +57,7 @@ export function BlockPreview({ jobId, totalPages, initialPage = 1, isPdf = false
 
   React.useEffect(() => {
     void load(page);
-  }, [page, load]);
+  }, [page, hasOutput, load]);
 
   const toggleLock = async (block: Block) => {
     setBusy(block.id);
@@ -76,6 +76,7 @@ export function BlockPreview({ jobId, totalPages, initialPage = 1, isPdf = false
 
   const skipped = blocks?.filter((block) => block.skip && !block.locked).length ?? 0;
   const locked = blocks?.filter((block) => block.locked).length ?? 0;
+  const hasAnyRewritten = Boolean(blocks?.some((block) => block.rewritten && block.rewritten !== block.original));
 
   return (
     <Card>
@@ -132,6 +133,55 @@ export function BlockPreview({ jobId, totalPages, initialPage = 1, isPdf = false
             ) : (
               <div className="flex items-center justify-center rounded-lg border border-dashed p-6 text-center text-xs text-muted-foreground">
                 Rewritten PDF page preview appears here once processing finishes.
+              </div>
+            )}
+          </div>
+        ) : blocks && blocks.length > 0 ? (
+          <div className="mb-5 grid gap-4 md:grid-cols-2">
+            <div className="rounded-lg border bg-muted/40 p-2">
+              <p className="mb-1.5 px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Original page {page}
+              </p>
+              <div className="max-h-[460px] overflow-y-auto rounded border bg-white p-5 text-slate-900 shadow-xs space-y-2.5">
+                {blocks.map((block) => (
+                  <p
+                    key={`orig-${block.id}`}
+                    className={cn(
+                      "whitespace-pre-wrap leading-relaxed",
+                      block.type === "heading" ? "text-sm font-bold text-slate-950" : "text-xs text-slate-800",
+                    )}
+                  >
+                    {block.original}
+                  </p>
+                ))}
+              </div>
+            </div>
+            {hasOutput || hasAnyRewritten ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-2">
+                <p className="mb-1.5 px-1 text-[11px] font-medium uppercase tracking-wide text-emerald-800">
+                  Rewritten page {page}
+                </p>
+                <div className="max-h-[460px] overflow-y-auto rounded border bg-white p-5 text-slate-900 shadow-xs space-y-2.5">
+                  {blocks.map((block) => {
+                    const changed = Boolean(block.rewritten && block.rewritten !== block.original);
+                    return (
+                      <p
+                        key={`rew-${block.id}`}
+                        className={cn(
+                          "whitespace-pre-wrap leading-relaxed",
+                          block.type === "heading" ? "text-sm font-bold text-slate-950" : "text-xs text-slate-800",
+                          changed && "rounded bg-emerald-50/70 px-1.5 py-0.5",
+                        )}
+                      >
+                        {block.rewritten || block.original}
+                      </p>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center rounded-lg border border-dashed p-6 text-center text-xs text-muted-foreground">
+                Rewritten document page preview appears here once processing finishes.
               </div>
             )}
           </div>
